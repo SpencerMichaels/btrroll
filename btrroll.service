@@ -1,0 +1,16 @@
+[Unit]
+Description=Restore
+Before=sysroot.mount
+BindsTo=sysroot.mount
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/btrroll
+StandardOutput=tty
+StandardInput=tty
+RemainAfterExit=yes
+Environment="TERMINFO=/lib/terminfo"
+
+[Install]
+RequiredBy=sysroot.mount

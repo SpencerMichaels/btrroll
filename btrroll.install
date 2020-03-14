@@ -1,0 +1,20 @@
+#!/usr/bin/ash
+
+build() {
+    add_runscript
+
+    add_binary btrfs
+    add_binary dialog
+    add_file /lib/terminfo/l/linux
+
+    #add_file /etc/btrroll.conf
+    add_binary btrroll
+    add_systemd_unit btrroll.service
+    systemctl --root "$BUILDROOT" enable btrroll.service
+}
+
+help() {
+    cat << EOF
+This hook provides support for snapshot restoration with btrroll.
+EOF
+}
