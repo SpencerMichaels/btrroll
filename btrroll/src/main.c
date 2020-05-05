@@ -1,5 +1,7 @@
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
+#include <libgen.h>
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
@@ -81,89 +83,153 @@ void main_menu(dialog_backend_t *dialog) {
   }
 }
 
-#define MOUNTPOINT_TEMPLATE "/btrfs_root-XXXXXX"
+#define BTRFS_MOUNTPOINT "/btrfs_root"
 
-void snapshot_menu(dialog_backend_t *dialog) {
+char *mount_root_subvol(dialog_backend_t *dialog) {
   char root[0x1000], flags[0x1000];
 
   if (get_root(root, sizeof(root), flags, sizeof(flags))) {
     dialog_ok(dialog, "Error",
-        "Failed to get root device info from /proc/cmdline: %s",
+        "get_root failed: %s",
         strerror(errno));
-    return;
+    return NULL;
   }
 
-  char mountpoint[] = MOUNTPOINT_TEMPLATE;
-  if (!mkdtemp(mountpoint)) {
+  if (mkdir(BTRFS_MOUNTPOINT, 0700)) {
+    perror("mkdir");
+    return NULL;
+  }
+
+  if (mount_root(root, BTRFS_MOUNTPOINT, "")) { // TODO: flags -subvol{,id}
     dialog_ok(dialog, "Error",
-        "Failed to create a temporary directory for mounting: %s",
+        "mount_root with `%s` failed: %s",
+        root,
         strerror(errno));
-    return;
+    return NULL; // TODO: unmount root?
   }
 
-  // TODO: sanitize flags, deleting subvol{,id} but retaining others
-  if (mount_root(root, mountpoint, "")) {
+  char *subvol_path_rel = get_btrfs_root_subvol_path(BTRFS_MOUNTPOINT, flags);
+  if (!subvol_path_rel) {
     dialog_ok(dialog, "Error",
-        "Failed to mount `%s` to `%s`: %s",
-        root, mountpoint, strerror(errno));
-    return;
+        "get_btrfs_root failed: %s",
+        strerror(errno));
+    return NULL;
   }
 
-  // TODO: this could be nicer
-  char *subvol_path_rel = get_btrfs_root_subvol_path(mountpoint, flags);
-  char *subvol_path_abs = malloc(strlen(mountpoint) + strlen(subvol_path_rel) + 2);
-  char *subvol_path_abs_new = malloc(strlen(mountpoint) + strlen(subvol_path_rel) + 11);
-  sprintf(subvol_path_abs, "%s%s%s", mountpoint,
+  // Compute the absolute path relative to the initramfs root
+  char *subvol_path = malloc(strlen(BTRFS_MOUNTPOINT) + strlen(subvol_path_rel) + 2);
+  sprintf(subvol_path, "%s%s%s", BTRFS_MOUNTPOINT,
           subvol_path_rel[0] == '/' ? "" : "/" , subvol_path_rel);
-
   free(subvol_path_rel);
 
+  return subvol_path;
+}
+
+#define SUBVOL_DIR_SUFFIX ".d"
+#define SUBVOL_CUR_NAME "current"
+#define SUBVOL_SNAP_NAME "snapshots"
+
+void snapshot_menu(dialog_backend_t *dialog) {
+  // Get the root subvolume path relative to the BTRFS partition root
+  char *subvol_path = mount_root_subvol(dialog);
+  if (!subvol_path) {
+    dialog_ok(dialog, "Error",
+        "Failed to mount root subvolume: %s",
+        strerror(errno));
+    return;
+  }
+
+  // Check if the root subvol is already set up for use with btrroll
   struct stat info;
-  if (lstat(subvol_path_abs, &info)) {
+  if (lstat(subvol_path, &info)) {
     dialog_ok(dialog, "Error",
         "Failed to stat subvol path: %s",
         strerror(errno));
     return;
   }
 
-  // TODO: Need a stricter check for this
+  // TODO: May want a stricter check than ISLNK
   if (!S_ISLNK(info.st_mode) &&
         dialog_confirm(dialog, 0, "Error",
           "Root subvolume is not a symlink. Would you like to provision it for "
           "use with btrroll?") == DIALOG_RESPONSE_YES && 
-        provision_subvol(subvol_path_abs))
+        provision_subvol(subvol_path))
       dialog_ok(dialog, "Error", "Failed provision: %s", strerror(errno));
 
-  dialog_ok(dialog, "Incomplete", "Incomplete");
+  const size_t snapshots_path_len = strlen(subvol_path) + strlen(SUBVOL_DIR_SUFFIX) +
+      strlen(SUBVOL_SNAP_NAME) + 2;
+  char * const snapshots_path = malloc(snapshots_path_len);
+  sprintf(snapshots_path, "%s" SUBVOL_DIR_SUFFIX "/" SUBVOL_SNAP_NAME, subvol_path);
+
+  DIR * const snapshots_dir = opendir(snapshots_path);
+  if (!snapshots_dir) {
+    // TODO: no snapshots dir/subvol
+    dialog_ok(dialog, "Error", "Failed to open `%s`: %s", snapshots_path, strerror(errno));
+    return;
+  }
+
+  // TODO: mem size limit
+  char **snapshots = malloc(0x100 * sizeof(char*));
+  size_t snapshots_len;
+
+  {
+    struct dirent *ep;
+    char **p = snapshots;
+    errno = 0;
+    while (ep = readdir(snapshots_dir))
+      if (ep->d_type == DT_DIR && ep->d_name[0] != '.')
+        *p++ = strcpy(malloc(strlen(ep->d_name)+1), ep->d_name);
+    snapshots_len = p - snapshots;
+
+    if (errno) {
+      // TODO: dir read error
+      return;
+    }
+
+    closedir(snapshots_dir); // TODO: error check
+  }
+
+  int choice = 0;
+  while (true) {
+    dialog_ok(dialog, "Choice", "Choice is %d", choice);
+    choice = dialog_choose(dialog,
+        (const char**)snapshots, snapshots_len, choice,
+        "Snapshots", "Select a snapshot from the list below.");
+
+    if (choice == DIALOG_RESPONSE_CANCEL)
+      return;
+    else if (choice > snapshots_len)
+      return; // TODO: error
+
+    const char * const snapshot_name = snapshots[choice];
+    char * const snapshot_path = malloc(snapshots_path_len + strlen(snapshot_name) + 2);
+    sprintf(snapshot_path, "%s/%s", snapshots_path, snapshot_name);
+
+    dialog_ok(dialog, "Selected", "Selected %s", snapshot_path);
+  }
 }
 
-#define SUBVOL_DIR_SUFFIX ".d"
-#define SUBVOL_CUR_NAME "current"
-
 int provision_subvol(char *path) {
-  const size_t path_new_len = strlen(path) + strlen(SUBVOL_DIR_SUFFIX) +
-      strlen(SUBVOL_CUR_NAME) + 2;
-  char *path_new = malloc(path_new_len);
-
-  strcpy(path_new, path);
-  strcat(path_new, SUBVOL_DIR_SUFFIX);
+  char * tmp = malloc(strlen(path) + strlen(SUBVOL_DIR_SUFFIX) +
+      strlen(SUBVOL_CUR_NAME) + 2);
 
   // Create subvol.d
-  if (mkdir(path_new, 0700)) {
+  sprintf(tmp, "%s" SUBVOL_DIR_SUFFIX, path);
+  if (mkdir(tmp, 0700)) {
     perror("mkdir");
     return -1;
   }
 
-  strcat(path_new, "/" SUBVOL_CUR_NAME);
-
-  // Move subvol to subvol.d/current
-  if (rename(path, path_new)) {
+  // Move subvol to /.../subvol.d/current (absolute)
+  strcat(tmp, "/" SUBVOL_CUR_NAME);
+  if (rename(path, tmp)) {
     perror("rename");
     return -1;
   }
 
-  // Symlink subvol -> subvol.d/current
-  if (symlink(path_new, path)) {
+  // Symlink subvol -> subvol.d/current (relative)
+  sprintf(tmp, "%s" SUBVOL_DIR_SUFFIX "/" SUBVOL_CUR_NAME, basename(path));
+  if (symlink(tmp, path)) {
     perror("symlink");
     return -1;
   }

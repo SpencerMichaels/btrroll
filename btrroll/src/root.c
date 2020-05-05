@@ -60,6 +60,7 @@ int mount_root(
   }
 
   const char * const flags_ = flags ? flags : "";
+  fprintf(stderr, "%s\n%s\n%s\n", path, mountpoint, flags_);
   if (mount(path, mountpoint, "btrfs", MS_NOATIME, flags_))
     return -1;
 
