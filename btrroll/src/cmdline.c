@@ -7,17 +7,25 @@
 
 #define CMDLINE_PATH "/proc/cmdline"
 
-int cmdline_get(
+int cmdline_read(
     char * const buf,
     const size_t len)
 {
-  FILE *fp;
-
-  if ((fp = fopen(CMDLINE_PATH, "rb")) == NULL)
-    return -ENOENT;
-
-  if (!fgets(buf, len, fp))
+  if (!buf || !len) {
+    errno = EINVAL;
     return -1;
+  }
+
+  FILE * const fp = fopen(CMDLINE_PATH, "rb");
+  if (!fp) {
+    perror("fopen");
+    return -1;
+  }
+  
+  if (!fgets(buf, len, fp)) {
+    perror("fgets");
+    return -1;
+  }
 
   // Remove the trailing newline
   const size_t n = strlen(buf);
@@ -34,38 +42,56 @@ char *cmdline_find_delim(
     const size_t len,
     char delim)
 {
+  if (!cmdline || !key || !buf || len == 0 || delim == '\0') {
+    errno = EINVAL;
+    return NULL;
+  }
+  errno = 0;
+
   const char delim_arr[] = { delim };
   const size_t cmdline_len = strlen(cmdline);
 
   const size_t key_len = strlen(key);
   char *token = strtok(cmdline, delim_arr);
-  char *ret = NULL;
+  char *found = NULL;
 
   do {
+    // If this token starts with the key we're looking for...
     if (!strncmp(token, key, key_len)) {
       char *value = token + key_len;
-      const char next = *value;
+      const char next = *value++;
 
-      // skip if token is only a strict prefix
-      if (next != delim && next != '\0' && next != '=' && next != '\n')
-        continue;
-
-      if (next == '=')
-        value++;
-
-      const size_t value_len = strlen(value);
-      strncpy(buf, value, len);
-      if (value - cmdline + value_len != cmdline_len) {
-        value[value_len] = delim;
+      // The key matches, but there is no associated value
+      if (next == delim || next == '\n' || next == '\0') {
+        buf[0] = '\0';
+        found = token;
       }
-      buf[len-1] = '\0';
-      ret = token;
+
+      // The key matches, and there is a value
+      else if (next == '=') {
+        // Copy the value into the output buffer and ensure that it terminates
+        strncpy(buf, value, len);
+        buf[len-1] = '\0';
+
+        // Restore the cmdline string by replacing the strtok-inserted null
+        // byte (if present) with the original delimiter character
+        const size_t value_len = strlen(value);
+        if (value - cmdline + value_len != cmdline_len)
+          value[value_len] = delim;
+
+        found = token;
+      }
+
+      // The key is only a prefix of the token, not a real match. Skip it.
+      else
+        continue;
     }
-    // Patch the string as we go along
+
+    // Patch the original delimeter character back into the cmdline string
     if (token > cmdline)
       *(token-1) = delim;
-    if (ret)
-      return ret;
+    if (found)
+      return found;
   } while ((token = strtok(NULL, delim_arr)));
 
   return NULL;

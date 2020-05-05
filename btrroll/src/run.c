@@ -7,6 +7,7 @@
 
 #include <run.h>
 
+// Read from an FD into a buffer; used to pipe into the parent proc's buffer
 static int read_into_buf(const int fd, char *buf, size_t len) {
   if (!buf)
     return -EINVAL;
@@ -18,7 +19,7 @@ static int read_into_buf(const int fd, char *buf, size_t len) {
         continue;
       } else {
         perror("read");
-        return -errno;
+        return -1;
       }
     } else if (count == 0) {
       break;
@@ -38,30 +39,35 @@ int run_pipe(
   int stdout_fd[2],
       stderr_fd[2];
 
+  // Create pipes for stdout/err
   if (pipe(stdout_fd) < 0 || pipe(stderr_fd) < 0) {
     perror("pipe");
-    return -errno;
+    return -1;
   }
 
   pid_t pid = fork();
 
-  if (pid < 0) { // Error
+  if (pid < 0) { // Failed to fork
     perror("fork");
-    return -errno;
+    return -1;
   } else if (pid == 0) { // In child
-    // dialog outputs selections to stderr, so we pipe that back to the parent
+    // Send stdout/err to the previously-established pipes if the corresponding
+    // length variable is nonzero. Not checking for a NULL buffer is intentional
+    // here; that is handled later.
     if ((outbuf_len && dup2(stdout_fd[1], STDOUT_FILENO) < 0) ||
         (errbuf_len && dup2(stderr_fd[1], STDERR_FILENO) < 0))
     {
       perror("dup2");
       return -errno;
     }
+
+    // The child doesn't need any of these FDs
     close(stdout_fd[0]);
     close(stdout_fd[1]);
     close(stderr_fd[0]);
     close(stderr_fd[1]);
 
-    // TODO: "discards qualifiers in nested pointer types"
+    // Run the original program
     const char * empty_args[] = { program, NULL };
     if (execvp(program, (char * const *) (args ? args : empty_args)) < 0) {
       perror("execvp");
@@ -70,9 +76,11 @@ int run_pipe(
   }
   
   // In parent
-  close(stdout_fd[1]); // Don't need to write to the child
+  // Don't need to write to the child; can close these FDs
+  close(stdout_fd[1]);
   close(stderr_fd[1]);
 
+  // Read stdout/err into their buffers, if non-NULL and of nonzero length
   if (outbuf && outbuf_len > 0)
     read_into_buf(stdout_fd[0], outbuf, outbuf_len);
   if (errbuf && errbuf_len > 0)
@@ -80,23 +88,21 @@ int run_pipe(
 
   int status;
   pid = wait(&status);
-  close(stdout_fd[0]); // Child exited; done reading
+
+  // Child exited; done reading
+  close(stdout_fd[0]);
   close(stderr_fd[0]);
 
   if (pid < 0) {
     perror("wait");
-    return -errno;
+    return -1;
   }
 
-  errno = 0;
-  if (WIFEXITED(status)) {
+  if (WIFEXITED(status))
     return WEXITSTATUS(status);
-  }
-  if (WIFSIGNALED(status)) {
+  if (WIFSIGNALED(status))
     return -WTERMSIG(status);
-  }
-  if (WIFSTOPPED(status)) {
+  if (WIFSTOPPED(status))
     return -WSTOPSIG(status);
-  }
   return -1;
 }

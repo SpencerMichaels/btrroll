@@ -86,11 +86,10 @@ void main_menu(dialog_backend_t *dialog) {
 int mount_root(
     const char * const source,
     const char * const mountpoint,
-    const char * const flags,
-    dialog_backend_t *dialog)
+    const char * const flags)
 {
   char by[16];
-  char *target;
+  const char * target;
   {
     size_t i;
     for (i = 0; isalpha(source[i]); ++i) {
@@ -106,8 +105,6 @@ int mount_root(
   char path[0x200];
   snprintf(path, sizeof(path), "/dev/disk/by-%s/%s", by, target);
 
-  dialog_ok(dialog, "mounting", "mounting `%s`", path);
-  dialog_ok(dialog, "mounting", "to `%s`", mountpoint);
   if (mount(path, mountpoint, "btrfs", MS_NOATIME, flags))
     return -errno;
 
@@ -122,7 +119,7 @@ int get_root(
 {
   char cmdline[0x1000];
 
-  if (cmdline_get(cmdline, sizeof(cmdline))
+  if (cmdline_read(cmdline, sizeof(cmdline))
       || !cmdline_find(cmdline, "root", root, root_len)
       || !cmdline_find(cmdline, "rootflags", flags, flags_len))
     return -1;
@@ -190,16 +187,12 @@ char * get_root_subvol_path(
 void snapshot_menu(dialog_backend_t *dialog) {
   char root[0x1000], flags[0x1000];
 
-  dialog_ok(dialog, "1", "1");
-
   if (get_root(root, sizeof(root), flags, sizeof(flags))) {
     dialog_ok(dialog, "Error",
         "Failed to get root device info from /proc/cmdline: %s",
         strerror(errno));
     return;
   }
-
-  dialog_ok(dialog, "2", "2");
 
   char mountpoint[] = MOUNTPOINT_TEMPLATE;
   if (!mkdtemp(mountpoint)) {
@@ -209,25 +202,22 @@ void snapshot_menu(dialog_backend_t *dialog) {
     return;
   }
 
-  dialog_ok(dialog, "3", "3");
-
   // TODO: sanitize flags, deleting subvol{,id} but retaining others
-  if (mount_root(root, mountpoint, "", dialog)) {
+  if (mount_root(root, mountpoint, "")) {
     dialog_ok(dialog, "Error",
         "Failed to mount `%s` to `%s`: %s",
         root, mountpoint, strerror(errno));
     return;
   }
 
-  dialog_ok(dialog, "4", "4");
-
+  // TODO: this could be nicer
   char *subvol_path_rel = get_root_subvol_path(mountpoint, flags);
   char *subvol_path_abs = malloc(strlen(mountpoint) + strlen(subvol_path_rel) + 2);
-  char *subvol_path_abs_d = malloc(strlen(mountpoint) + strlen(subvol_path_rel) + 4);
-  sprintf(subvol_path_abs, "%s/%s", mountpoint, subvol_path_rel);
-  sprintf(subvol_path_abs_d, "%s.d", subvol_path_abs);
-
-  dialog_ok(dialog, "5", "5");
+  char *subvol_path_abs_new = malloc(strlen(mountpoint) + strlen(subvol_path_rel) + 4);
+  sprintf(subvol_path_abs, "%s%s%s", mountpoint,
+          subvol_path_rel[0] == '/' ? "" : "/" , subvol_path_rel);
+  sprintf(subvol_path_abs_new, "%s.d/current", subvol_path_abs);
+  free(subvol_path_rel);
 
   struct stat info;
   if (lstat(subvol_path_abs, &info)) {
@@ -237,29 +227,23 @@ void snapshot_menu(dialog_backend_t *dialog) {
     return;
   }
 
-  dialog_ok(dialog, "6", "6");
-
   if (!S_ISLNK(info.st_mode)) {
-    dialog_ok(dialog, "is link", "is link");
     if (dialog_confirm(dialog, 0, "Error",
         "Root subvolume is not a symlink. Would you like to provision it?")
           == DIALOG_RESPONSE_YES)
     {
-      dialog_ok(dialog, "7", "7");
-
-      if (rename(subvol_path_abs, subvol_path_abs_d) < 0) {
+      if (rename(subvol_path_abs, subvol_path_abs_new) < 0) {
         dialog_ok(dialog, "Error",
             "Failed to rename `%s` to `%s`: %s",
-            subvol_path_abs, subvol_path_abs_d, strerror(errno));
+            subvol_path_abs, subvol_path_abs_new, strerror(errno));
         return;
       }
 
-      dialog_ok(dialog, "8", "8");
-
-      if (symlink(subvol_path_abs_d, subvol_path_abs) < 0) {
+      if (symlink(subvol_path_abs_new, subvol_path_abs) < 0) {
         dialog_ok(dialog, "Error",
             "Failed to symlink `%s` to `%s`: %s",
-            subvol_path_abs_d, subvol_path_abs, strerror(errno));
+            subvol_path_abs_new, subvol_path_abs, strerror(errno));
+        // TODO: revert if failed
         return;
       }
 
