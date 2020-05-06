@@ -1,7 +1,9 @@
+#include <btrfsutil.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <libgen.h>
+#include <linux/magic.h>
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
@@ -9,6 +11,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/vfs.h>
 
 #include <dialog/cli.h>
 #include <dialog/tui.h>
@@ -95,17 +98,49 @@ char *mount_root_subvol(dialog_backend_t *dialog) {
     return NULL;
   }
 
-  if (mkdir(BTRFS_MOUNTPOINT, 0700)) {
-    perror("mkdir");
-    return NULL;
-  }
+  {
+    struct stat sb;
+    bool needs_mount;
+    if (stat(BTRFS_MOUNTPOINT, &sb)) {
+      // The mountpoint directory does not exist; create it
+      needs_mount = true;
+      if (mkdir(BTRFS_MOUNTPOINT, 0700)) {
+        perror("mkdir");
+        return NULL;
+      }
+    } else {
+      // The mountpoint directory already exists
+      struct stat sbp;
+      if (stat(BTRFS_MOUNTPOINT "/..", &sbp)) {
+        perror("stat");
+        return NULL;
+      }
+      // Only mount over it if it's not already a mountpoint
+      needs_mount = sb.st_dev == sbp.st_dev;
+    }
+    
+    // Mount if not mounted already
+    // TODO: flags -= subvol{,id}
+    if (needs_mount && mount_root(root, BTRFS_MOUNTPOINT, "")) {
+      dialog_ok(dialog, "Error",
+          "mount_root with `%s` failed: %s",
+          root, strerror(errno));
+      return NULL; // TODO: unmount root?
+    }
 
-  if (mount_root(root, BTRFS_MOUNTPOINT, "")) { // TODO: flags -subvol{,id}
-    dialog_ok(dialog, "Error",
-        "mount_root with `%s` failed: %s",
-        root,
-        strerror(errno));
-    return NULL; // TODO: unmount root?
+    // Check that the mounted filesystem is actually BTRFS
+    struct statfs sfb;
+    if (statfs(BTRFS_MOUNTPOINT, &sfb)) {
+      perror("statfs");
+      return NULL;
+    }
+
+    if (sfb.f_type != BTRFS_SUPER_MAGIC) {
+      dialog_ok(dialog, "Error",
+          "Root device `%s` is not a BTRFS filesystem. %x", root, sfb.f_type);
+      errno = EINVAL;
+      return NULL;
+    }
   }
 
   char *subvol_path_rel = get_btrfs_root_subvol_path(BTRFS_MOUNTPOINT, flags);
@@ -191,15 +226,12 @@ void snapshot_menu(dialog_backend_t *dialog) {
 
   int choice = 0;
   while (true) {
-    dialog_ok(dialog, "Choice", "Choice is %d", choice);
     choice = dialog_choose(dialog,
         (const char**)snapshots, snapshots_len, choice,
         "Snapshots", "Select a snapshot from the list below.");
 
     if (choice == DIALOG_RESPONSE_CANCEL)
       return;
-    else if (choice > snapshots_len)
-      return; // TODO: error
 
     const char * const snapshot_name = snapshots[choice];
     char * const snapshot_path = malloc(snapshots_path_len + strlen(snapshot_name) + 2);
