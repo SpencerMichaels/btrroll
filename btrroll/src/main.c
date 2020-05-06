@@ -4,11 +4,13 @@
 #include <errno.h>
 #include <libgen.h>
 #include <linux/magic.h>
+#include <linux/reboot.h>
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/reboot.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/vfs.h>
@@ -72,10 +74,12 @@ void main_menu(dialog_backend_t *dialog) {
         run("sh", NULL);
         break;
       case 2:
-        // TODO
+        sync();
+        reboot(LINUX_REBOOT_CMD_RESTART);
         break;
       case 3:
-        // TODO
+        sync();
+        reboot(LINUX_REBOOT_CMD_POWER_OFF);
         break;
       case 4:
       case DIALOG_RESPONSE_CANCEL:
@@ -332,3 +336,24 @@ CLEANUP:
   free(tmp);
   return ret;
 }
+
+/* Restore from subvolume
+ * (Ask to) Move subvol.d/current to subvol.d/backups and and set it to readonly
+ * Make an RW copy of the subvolume to restore in subvol.d/current
+ * Set the default boot entry based on the kernel version in the new current
+ * Reboot
+ */
+
+/* Boot from subvolume
+ * Make an RW copy of the subvolume to boot in subvol.d/temp
+ * Create a file subvol.d/temp.count with content "0"
+ * Set the subvol symlink to point to temp
+ * Set the next boot entry based on the kernel version in temp
+ * Reboot
+ *
+ * At next boot (stateless)
+ * If subvol symlink points to subvol.d/temp and count = ...
+ *  0, increment temp.count to "1" and boot normally w/o interface
+ *  1, set symlink back to current, delete temp, and remove temp.count
+ *
+ */
