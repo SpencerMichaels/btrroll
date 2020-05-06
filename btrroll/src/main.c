@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <sys/reboot.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/vfs.h>
 
@@ -28,6 +29,22 @@ void snapshot_menu();
 void snapshot_detail_menu(dialog_backend_t *dialog, char *snapshot);
 int provision_subvol(char *path);
 
+int wait_for_input(time_t seconds) {
+  fd_set set;
+  struct timeval timeout;
+
+  FD_ZERO(&set);
+  FD_SET(STDIN_FILENO, &set);
+
+  timeout.tv_sec = seconds;
+  timeout.tv_usec = 0;
+
+  int ret;
+  while ((ret = select(FD_SETSIZE, &set, NULL, NULL, &timeout)) < 0 && errno == EAGAIN);
+
+  return ret;
+}
+
 int main(int argc, char **argv) {
   /*
   if (!access(INITRD_RELEASE_PATH, F_OK)) {
@@ -36,6 +53,12 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
   */
+
+  // TODO: Due to terminal input buffering, I can only wait for Enter unless
+  // I actually use ncurses. Make this as ergonomic as I can given that limitation..
+  // Consider dialog_timeout (dialog --timeout) to give a better indication
+  if (wait_for_input(1) == 0)
+    return 0;
 
   dialog_backend_t dialog;
   if (dialog_tui_available())
@@ -52,7 +75,7 @@ int main(int argc, char **argv) {
 
 void main_menu(dialog_backend_t *dialog) {
   static const char *ITEMS[] = {
-    "Manage snapshots",
+    "Boot/restore a snapshot",
     "Launch a shell",
     "Reboot",
     "Shutdown",
@@ -67,17 +90,21 @@ void main_menu(dialog_backend_t *dialog) {
 
     switch (choice) {
       case 0:
+        // TODO: make sure mounts/unmounts, or at least chdirs, are reverted
         snapshot_menu(dialog);
         break;
       case 1:
+        // TODO: cd to /; see above
         dialog_clear(dialog);
         run("sh", NULL);
         break;
       case 2:
+        // TODO: Make sure this does not cause any data loss
         sync();
         reboot(LINUX_REBOOT_CMD_RESTART);
         break;
       case 3:
+        // TODO: Make sure this does not cause any data loss
         sync();
         reboot(LINUX_REBOOT_CMD_POWER_OFF);
         break;
@@ -287,6 +314,7 @@ void snapshot_detail_menu(dialog_backend_t *dialog, char *snapshot) {
       strlen(BTRROLL_INFO_FILE) + 2);
   sprintf(info_file_path, "%s/%s", snapshot, BTRROLL_INFO_FILE);
 
+  // TODO: make this dialog_display; can use dialog --textbox
   FILE *info_file = fopen(info_file_path, "r");
   if (!info_file)
     return; // TODO error, cleanup
