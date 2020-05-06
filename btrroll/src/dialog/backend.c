@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -25,6 +26,13 @@ int dialog_choose(
     const size_t pos,
     const char *title, const char *format, ...)
 {
+  if (!backend || !items || items_len == 0 || items_len > INT_MAX ||
+      pos >= items_len || !title || !format)
+  {
+    errno = EINVAL;
+    return -1;
+  }
+
   format_msg(tmp_buf, format);
   return backend->choose(backend->data, items, items_len, pos, title, tmp_buf);
 }
@@ -34,6 +42,11 @@ int dialog_confirm(
     bool default_,
     const char *title, const char *format, ...)
 {
+  if (!backend || !title || !format) {
+    errno = EINVAL;
+    return -1;
+  }
+
   format_msg(tmp_buf, format);
   return backend->confirm(backend->data, default_, title, tmp_buf);
 }
@@ -42,6 +55,11 @@ int dialog_ok(
     const dialog_backend_t * const backend,
     const char *title, const char *format, ...)
 {
+  if (!backend || !title || !format) {
+    errno = EINVAL;
+    return -1;
+  }
+
   format_msg(tmp_buf, format);
   return backend->ok(backend->data, title, tmp_buf);
 }
@@ -49,10 +67,14 @@ int dialog_ok(
 void dialog_clear(
     const dialog_backend_t * const backend)
 {
-  return backend->clear();
+  if (backend)
+    return backend->clear();
 }
 
 void dialog_free(const dialog_backend_t * const backend) {
+  if (!backend)
+    return;
+
   if (backend->free)
     backend->free(backend->data);
   free(backend->data);

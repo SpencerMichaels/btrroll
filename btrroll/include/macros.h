@@ -11,5 +11,12 @@
 #define str_and_len(s) \
   s, strlen(s)
 
+#define CLEANUP_DECLARE(ret) \
+  __label__ CLEANUP; \
+  int ret = 0;
+
+#define FAIL(ret) \
+  ret = -1; \
+  goto CLEANUP;
 
 #endif

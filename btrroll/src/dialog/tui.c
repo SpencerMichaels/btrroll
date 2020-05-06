@@ -81,9 +81,6 @@ int dialog_tui_choose(
     const size_t pos,
     const char *title, const char *msg)
 {
-  if (!msg || !items || items_len == 0 || items_len > INT_MAX)
-    return -EINVAL;
-
   char pos_str[8];
   snprintf(pos_str, sizeof(pos_str), "%zu", pos+1);
 
@@ -113,8 +110,13 @@ int dialog_tui_choose(
   char buf[BUF_LEN];
 
   const int ret = run_pipe("dialog", args, NULL, 0, buf, BUF_LEN);
-  const dialog_statuses_t * const statuses = (dialog_statuses_t*) data;
 
+  // Only some elements of `args` are heap-allocated
+  for (size_t i = 0; i < items_len; i += 1)
+    free((char*)args[lenof(ARGS_PREFIX) + i*2]);
+  free(args);
+
+  const dialog_statuses_t * const statuses = (dialog_statuses_t*) data;
   if (ret < 0)
     return ret;
   if (ret == statuses->cancel || ret == statuses->esc)

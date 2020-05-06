@@ -61,7 +61,6 @@ int mount_root(
 
   // TODO: If this happens twice, mounting will fail
   const char * const flags_ = flags ? flags : "";
-  fprintf(stderr, "%s\n%s\n%s\n", path, mountpoint, flags_);
   if (mount(path, mountpoint, "btrfs", MS_NOATIME, flags_))
     return -1;
 
@@ -83,7 +82,7 @@ static inline char * match_next(
 
 char * get_btrfs_root_subvol_path(
     const char * const mountpoint,
-    char * flags)
+    char *flags)
 {
   if (!mountpoint) {
     errno = EINVAL;
