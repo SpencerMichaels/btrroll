@@ -1,23 +1,14 @@
 #include <errno.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <dialog/tui.h>
+#include <dialog.h>
 #include <macros.h>
 #include <run.h>
 
 #define BACKTITLE "btrroll 1.0.0"
-
-typedef struct {
-  int cancel,
-      error,
-      esc,
-      extra,
-      help,
-      item_help,
-      ok;
-} dialog_statuses_t;
 
 #define DIALOG_CANCEL 1
 #define DIALOG_ERROR -1
@@ -26,6 +17,21 @@ typedef struct {
 #define DIALOG_HELP 2
 #define DIALOG_ITEM_HELP 2
 #define DIALOG_OK 0
+
+static char tmp_buf[0x1000];
+
+#define format_msg(buf, format) \
+{ \
+  int ret; \
+  va_list args; \
+\
+  va_start(args, format); \
+  ret = vsprintf(buf, format, args); \
+  va_end(args); \
+\
+  if (ret < 0) \
+    return ret; \
+}
 
 int get_status_code_(const char *name, int default_) {
   errno = 0;
@@ -46,60 +52,47 @@ int get_status_code_(const char *name, int default_) {
 #define get_status_code(name) \
   get_status_code_(#name, name)
 
-static inline int check_ret(int ret, void * const data) {
-  const dialog_statuses_t * const statuses = (dialog_statuses_t*) data;
-  if (ret == statuses->ok)
+int check_ret(int ret, dialog_statuses_t statuses) {
+  if (ret == statuses.ok)
     return DIALOG_RESPONSE_YES;
-  if (ret == statuses->cancel || ret == statuses->esc)
+  if (ret == statuses.cancel || ret == statuses.esc)
     return DIALOG_RESPONSE_NO;
   return ret;
 }
 
-bool dialog_tui_available() {
-  const char *args[] = { "which", "dialog", NULL };
-  return !run_pipe("which", args, NULL, -1, NULL, -1);
-}
-
-void dialog_tui_init(dialog_backend_t * const backend) {
-  backend->choose = dialog_tui_choose;
-  backend->confirm = dialog_tui_confirm;
-  backend->ok = dialog_tui_ok;
-  backend->view_file = dialog_tui_view_file;
-  backend->clear = dialog_tui_clear;
-
+void dialog_init(dialog_t * const dialog) {
   /*
    * dialog allows its return values to be changed by env vars (!?)
    * we have to take this into account when reacting to its status codes
    */
-  dialog_statuses_t *statuses = malloc(sizeof(dialog_statuses_t));
-
-  statuses->cancel = get_status_code(DIALOG_CANCEL);
-  statuses->error = get_status_code(DIALOG_ERROR);
-  statuses->esc = get_status_code(DIALOG_ESC);
-  statuses->extra = get_status_code(DIALOG_EXTRA);
-  statuses->help = get_status_code(DIALOG_HELP);
-  statuses->item_help = get_status_code(DIALOG_ITEM_HELP);
-  statuses->ok = get_status_code(DIALOG_OK);
-
-  backend->data = (void*)statuses;
-  backend->free = NULL;
+  dialog->statuses.cancel = get_status_code(DIALOG_CANCEL);
+  dialog->statuses.error = get_status_code(DIALOG_ERROR);
+  dialog->statuses.esc = get_status_code(DIALOG_ESC);
+  dialog->statuses.extra = get_status_code(DIALOG_EXTRA);
+  dialog->statuses.help = get_status_code(DIALOG_HELP);
+  dialog->statuses.item_help = get_status_code(DIALOG_ITEM_HELP);
+  dialog->statuses.ok = get_status_code(DIALOG_OK);
 }
 
-int dialog_tui_choose(
-    void * const data,
+void dialog_free(dialog_t * const dialog) {
+}
+
+int dialog_choose(
+    dialog_t * const dialog,
     const char **items, const size_t items_len,
     const size_t pos,
-    const char *title, const char *msg)
+    const char *title, const char *format, ...)
 {
   char pos_str[8];
   snprintf(pos_str, sizeof(pos_str), "%zu", pos+1);
 
+  format_msg(tmp_buf, format);
   const char * const args_prefix[] = {
       "dialog",
       "--backtitle", BACKTITLE,
       "--title", title,
       "--default-item", pos_str,
-      "--menu", msg, "0", "0", "10"
+      "--menu", tmp_buf, "0", "0", "10"
   };
   const size_t args_len = 2*items_len + lenof(args_prefix) + 1;
   const char **args = malloc(sizeof(char *) * args_len);
@@ -126,53 +119,54 @@ int dialog_tui_choose(
     free((char*)args[lenof(args_prefix) + i*2]);
   free(args);
 
-  const dialog_statuses_t * const statuses = (dialog_statuses_t*) data;
   if (ret < 0)
     return ret;
-  if (ret == statuses->cancel || ret == statuses->esc)
+  if (ret == dialog->statuses.cancel || ret == dialog->statuses.esc)
     return DIALOG_RESPONSE_CANCEL;
-  if (ret == statuses->error)
+  if (ret == dialog->statuses.error)
     return -1;
 
   return strtol(buf, NULL, 10) - 1;
 }
 
-int dialog_tui_confirm(
-    void * const data,
+int dialog_confirm(
+    dialog_t * const dialog,
     bool default_,
-    const char *title, const char *msg)
+    const char *title, const char *format, ...)
 {
   // The use of --clear here is a hack to avoid dynamic arg allocation
   // It is basically a no-op that can stand in when --defaultno is not needed
+  format_msg(tmp_buf, format);
   const char * args[] = {
       "dialog",
       "--backtitle", BACKTITLE,
       "--title", title,
       default_ ? "--clear" : "--defaultno",
-      "--yesno", msg, "0", "0",
+      "--yesno", tmp_buf, "0", "0",
       NULL
   };
 
-  return check_ret(run("dialog", args), data);
+  return check_ret(run("dialog", args), dialog->statuses);
 }
 
-int dialog_tui_ok(
-    void * const data,
-    const char *title, const char *msg)
+int dialog_ok(
+    dialog_t * const dialog,
+    const char *title, const char *format, ...)
 {
+  format_msg(tmp_buf, format);
   const char * args[] = {
       "dialog",
       "--backtitle", BACKTITLE,
       "--title", title,
-      "--msgbox", msg, "0", "0",
+      "--msgbox", format, "0", "0",
       NULL
   };
 
-  return check_ret(run("dialog", args), data);
+  return check_ret(run("dialog", args), dialog->statuses);
 }
 
-int dialog_tui_view_file(
-    void * const data,
+int dialog_view_file(
+    dialog_t * const dialog,
     const char * title,
     const char * filepath)
 {
@@ -184,15 +178,15 @@ int dialog_tui_view_file(
       NULL
   };
 
-  return check_ret(run("dialog", args), data);
+  return check_ret(run("dialog", args), dialog->statuses);
 }
 
-int dialog_tui_clear(void * const data) {
+int dialog_clear(dialog_t * const dialog) {
   static const char * args[] = {
       "dialog",
       "--clear",
       NULL
   };
 
-  return check_ret(run("dialog", args), data);
+  return check_ret(run("dialog", args), dialog->statuses);
 }

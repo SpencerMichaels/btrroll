@@ -16,8 +16,7 @@
 #include <sys/types.h>
 #include <sys/vfs.h>
 
-#include <dialog/cli.h>
-#include <dialog/tui.h>
+#include <dialog.h>
 #include <macros.h>
 #include <root.h>
 #include <run.h>
@@ -26,7 +25,7 @@
 
 void main_menu();
 void snapshot_menu();
-void snapshot_detail_menu(dialog_backend_t *dialog, char *snapshot);
+void snapshot_detail_menu(dialog_t *dialog, char *snapshot);
 int provision_subvol(char *path);
 
 int wait_for_input(time_t seconds) {
@@ -60,20 +59,17 @@ int main(int argc, char **argv) {
   if (wait_for_input(1) == 0)
     return 0;
 
-  dialog_backend_t dialog;
-  if (dialog_tui_available())
-    dialog_tui_init(&dialog);
-  else
-    dialog_cli_init(&dialog);
+  dialog_t dialog;
+  dialog_init(&dialog);
 
   main_menu(&dialog);
-  
+
   dialog_free(&dialog);
 
   return EXIT_SUCCESS;
 }
 
-void main_menu(dialog_backend_t *dialog) {
+void main_menu(dialog_t *dialog) {
   static const char *ITEMS[] = {
     "Boot/restore a snapshot",
     "Launch a shell",
@@ -120,7 +116,7 @@ void main_menu(dialog_backend_t *dialog) {
 
 #define BTRFS_MOUNTPOINT "/btrfs_root"
 
-char *mount_root_subvol(dialog_backend_t *dialog) {
+char *mount_root_subvol(dialog_t *dialog) {
   char root[0x1000], flags[0x1000];
 
   if (get_root(root, sizeof(root), flags, sizeof(flags))) {
@@ -188,7 +184,7 @@ char *mount_root_subvol(dialog_backend_t *dialog) {
 #define SUBVOL_CUR_NAME "current"
 #define SUBVOL_SNAP_NAME "snapshots"
 
-void snapshot_menu(dialog_backend_t *dialog) {
+void snapshot_menu(dialog_t *dialog) {
   // Get the root subvolume path relative to the BTRFS partition root
   // This path is relative in this case, but sometimes start with a /
   char *subvol_path = mount_root_subvol(dialog);
@@ -298,7 +294,7 @@ void snapshot_menu(dialog_backend_t *dialog) {
 
 #define BTRROLL_INFO_FILE ".btrroll.info"
 
-void snapshot_detail_menu(dialog_backend_t *dialog, char *snapshot) {
+void snapshot_detail_menu(dialog_t *dialog, char *snapshot) {
   char *info_file_path = malloc(strlen(snapshot) +
       strlen(BTRROLL_INFO_FILE) + 2);
   sprintf(info_file_path, "%s/%s", snapshot, BTRROLL_INFO_FILE);
@@ -384,6 +380,6 @@ void snapshot_restore(const char *snapshot) {
  *
  */
 
-void snapshot_restore(const char *snapshot) {
+void snapshot_boot(const char *snapshot) {
   // btrfs_util_create_snapshot
 }
