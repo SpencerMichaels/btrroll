@@ -5,11 +5,13 @@
 #include <stdlib.h>
 
 #include <dialog/cli.h>
+#include <run.h>
 
 void dialog_cli_init(dialog_backend_t * const backend) {
   backend->choose = dialog_cli_choose;
   backend->confirm = dialog_cli_confirm;
   backend->ok = dialog_cli_ok;
+  backend->view_file = dialog_cli_view_file;
   backend->clear = dialog_cli_clear;
 
   backend->data = NULL;
@@ -120,5 +122,19 @@ int dialog_cli_ok(
   return (ret < 0) ? ret : 0;
 }
 
-void dialog_cli_clear(void * const data) {
+int dialog_cli_view_file(
+    void * const data,
+    const char * title,
+    const char * filepath)
+{
+  const char * args[] = {
+      "less", filepath,
+      NULL
+  };
+
+  return run("less", args);
+}
+
+int dialog_cli_clear(void * const data) {
+  return 0;
 }

@@ -230,8 +230,6 @@ void snapshot_menu(dialog_backend_t *dialog) {
   sprintf(snapshots_path, "%s" SUBVOL_DIR_SUFFIX "/" SUBVOL_SNAP_NAME, subvol_path);
   free(subvol_path);
 
-  fprintf(stderr, "1\n");
-
   DIR * const snapshots_dir = opendir(snapshots_path);
   if (!snapshots_dir) {
     if (errno == ENOENT)
@@ -246,14 +244,10 @@ void snapshot_menu(dialog_backend_t *dialog) {
     return;
   }
 
-  fprintf(stderr, "2\n");
-
   // Switch to the snapshots base dir to make paths more convenient.
   // TODO: switch back afterward?
   chdir(snapshots_path);
   free(snapshots_path);
-
-  fprintf(stderr, "3\n");
 
   const size_t SNAPSHOTS_LEN_MAX = 0x100;
   size_t snapshots_len;
@@ -283,9 +277,6 @@ void snapshot_menu(dialog_backend_t *dialog) {
       perror("closedir");
   }
 
-  for (char **x = snapshots; *x; ++x)
-    fprintf(stderr, "%s", *x);
-
   int choice = 0;
   while (true) {
     choice = dialog_choose(dialog,
@@ -300,8 +291,6 @@ void snapshot_menu(dialog_backend_t *dialog) {
     snapshot_detail_menu(dialog, snapshots[choice]);
   }
 
-  fprintf(stderr, "5\n");
-
   for (size_t i = 0; i < snapshots_len; ++i)
     free(snapshots[i]);
   free(snapshots);
@@ -314,6 +303,7 @@ void snapshot_detail_menu(dialog_backend_t *dialog, char *snapshot) {
       strlen(BTRROLL_INFO_FILE) + 2);
   sprintf(info_file_path, "%s/%s", snapshot, BTRROLL_INFO_FILE);
 
+  /*
   // TODO: make this dialog_display; can use dialog --textbox
   FILE *info_file = fopen(info_file_path, "r");
   if (!info_file)
@@ -330,6 +320,10 @@ void snapshot_detail_menu(dialog_backend_t *dialog, char *snapshot) {
   content[content_len] = '\0';
 
   dialog_ok(dialog, snapshot, "%s", content);
+  */
+
+  dialog_view_file(dialog, snapshot, info_file_path);
+
   free(info_file_path);
 }
 
@@ -372,6 +366,10 @@ CLEANUP:
  * Reboot
  */
 
+void snapshot_restore(const char *snapshot) {
+  // btrfs_util_set_subvolume_read_only
+}
+
 /* Boot from subvolume
  * Make an RW copy of the subvolume to boot in subvol.d/temp
  * Create a file subvol.d/temp.count with content "0"
@@ -385,3 +383,7 @@ CLEANUP:
  *  1, set symlink back to current, delete temp, and remove temp.count
  *
  */
+
+void snapshot_restore(const char *snapshot) {
+  // btrfs_util_create_snapshot
+}

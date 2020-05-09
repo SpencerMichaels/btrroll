@@ -22,6 +22,11 @@ int dialog_cli_ok(
     void * const data,
     const char *title, const char *msg);
 
-void dialog_cli_clear(void * const data);
+int dialog_cli_view_file(
+    void * const data,
+    const char * title,
+    const char * const filepath);
+
+int dialog_cli_clear(void * const data);
 
 #endif

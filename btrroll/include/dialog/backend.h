@@ -19,7 +19,7 @@ struct dialog_backend {
    * Returns:
    *   n (0-indexed) if the n-th item was selected
    *   DIALOG_CANCELLED if the user cancelled (if applicable)
-   *   -errno on error
+   *   -1 on error
    */
   int (*choose)(void * const data,
                 const char **items, const size_t items_len,
@@ -32,7 +32,7 @@ struct dialog_backend {
    *   1 on yes
    *   0 on no
    *   default_ on empty response
-   *  -errno on error
+   *  -1 on error
    */
   int (*confirm)(void * const data,
                  bool default_,
@@ -40,13 +40,19 @@ struct dialog_backend {
 
   /* Info prompt with an OK button
    *
-   * Returns 0, or -errno on error
+   * Returns 0, or -1 on error
    */
   int (*ok)(void * const data, const char *title, const char *msg);
 
+  /* Display the contents of a file in a less-like interface
+   *
+   * Returns 0, or -1 on error
+   */
+  int (*view_file)(void * const data, const char *title, const char *filepath);
+
   /* Clears the screen
    */
-  void (*clear)();
+  int (*clear)(void * const data);
 
   /* Deallocates memory
    */
@@ -71,7 +77,12 @@ int dialog_ok(
     const dialog_backend_t * const backend,
     const char *title, const char *format, ...);
 
-void dialog_clear(
+int dialog_view_file(
+    const dialog_backend_t * const backend,
+    const char * title,
+    const char *filepath);
+
+int dialog_clear(
     const dialog_backend_t * const backend);
 
 void dialog_free(

@@ -23,6 +23,11 @@ int dialog_tui_ok(
     void * const data,
     const char *title, const char *msg);
 
-void dialog_tui_clear(void * const data);
+int dialog_tui_view_file(
+    void * const data,
+    const char * title,
+    const char * const filepath);
+
+int dialog_tui_clear(void * const data);
 
 #endif

@@ -64,11 +64,28 @@ int dialog_ok(
   return backend->ok(backend->data, title, tmp_buf);
 }
 
-void dialog_clear(
+int dialog_view_file(
+    const dialog_backend_t * const backend,
+    const char *title,
+    const char *filepath)
+{
+  if (!backend || !title || !filepath) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  return backend->view_file(backend->data, title, filepath);
+}
+
+int dialog_clear(
     const dialog_backend_t * const backend)
 {
-  if (backend)
-    return backend->clear();
+  if (!backend) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  return backend->clear(backend->data);
 }
 
 void dialog_free(const dialog_backend_t * const backend) {
