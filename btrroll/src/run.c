@@ -31,6 +31,7 @@ static int read_into_buf(const int fd, char *buf, size_t len) {
   return 0;
 }
 
+// Run a program, optionally piping its stdout/err into buffers
 int run_pipe(
     char *program, const char **args,
     char *outbuf, const ssize_t outbuf_len,

@@ -4,9 +4,15 @@
 #include <limits.h>
 #include <stdbool.h>
 
-#define DIALOG_RESPONSE_NO 0
-#define DIALOG_RESPONSE_YES 1
-#define DIALOG_RESPONSE_CANCEL INT_MIN
+typedef enum dialog_response {
+  DIALOG_RESPONSE_OK = 0,
+  DIALOG_RESPONSE_YES = 0,
+  DIALOG_RESPONSE_CANCEL = 1,
+  DIALOG_RESPONSE_NO = 1,
+  DIALOG_RESPONSE_HELP = 2,
+  DIALOG_RESPONSE_ITEM_HELP = 2,
+  DIALOG_RESPONSE_EXTRA = 3,
+} dialog_response_t;
 
 typedef struct dialog_statuses {
   int cancel,
@@ -18,17 +24,37 @@ typedef struct dialog_statuses {
       ok;
 } dialog_statuses_t;
 
+typedef struct dialog_labels {
+  const char *cancel,
+             *exit,
+             *extra,
+             *help,
+             *no,
+             *ok,
+             *yes;
+} dialog_labels_t;
+
+typedef struct dialog_buttons {
+  bool ok,
+       cancel,
+       extra,
+       help;
+} dialog_buttons_t;
+
 typedef struct dialog {
   dialog_statuses_t statuses;
+  dialog_labels_t labels;
+  dialog_buttons_t buttons;
 } dialog_t;
 
 void dialog_init(dialog_t * const dialog);
+void dialog_reset(dialog_t * const dialog);
 void dialog_free(dialog_t * const dialog);
 
 int dialog_choose(
     dialog_t * const dialog,
     const char **items, const size_t items_len,
-    const size_t pos,
+    size_t *choice,
     const char *title, const char *format, ...);
 
 int dialog_confirm(

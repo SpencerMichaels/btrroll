@@ -78,11 +78,19 @@ void main_menu(dialog_t *dialog) {
     "Exit (continue booting)"
   };
 
-  int choice = 0;
+  size_t choice = 0;
   while (true) {
-    choice = dialog_choose(dialog,
-        ITEMS, lenof(ITEMS), choice,
+    dialog->buttons.ok = false;
+    dialog->buttons.cancel = false;
+
+    int ret = dialog_choose(dialog,
+        ITEMS, lenof(ITEMS), &choice,
         "Main Menu", "What would you like to do?");
+
+    dialog_reset(dialog);
+
+    if (ret == DIALOG_RESPONSE_CANCEL)
+      return;
 
     switch (choice) {
       case 0:
@@ -104,9 +112,6 @@ void main_menu(dialog_t *dialog) {
         sync();
         reboot(LINUX_REBOOT_CMD_POWER_OFF);
         break;
-      case 4:
-      case DIALOG_RESPONSE_CANCEL:
-        return;
       default:
         dialog_ok(dialog, "Error", "Encountered an error."); // TODO
         return;
@@ -273,16 +278,16 @@ void snapshot_menu(dialog_t *dialog) {
       perror("closedir");
   }
 
-  int choice = 0;
+  int ret;
+  size_t choice = 0;
+
   while (true) {
-    choice = dialog_choose(dialog,
-        (const char**)snapshots, snapshots_len, choice,
+    ret = dialog_choose(dialog,
+        (const char**)snapshots, snapshots_len, &choice,
         "Snapshots", "Select a snapshot from the list below.");
 
-    if (choice == DIALOG_RESPONSE_CANCEL)
+    if (ret == DIALOG_RESPONSE_CANCEL || ret < 0)
       break;
-    if (choice < 0)
-      break; // error
 
     snapshot_detail_menu(dialog, snapshots[choice]);
   }
@@ -290,6 +295,10 @@ void snapshot_menu(dialog_t *dialog) {
   for (size_t i = 0; i < snapshots_len; ++i)
     free(snapshots[i]);
   free(snapshots);
+
+  //if (ret > 0)
+  //  return ret;
+  //return 0;
 }
 
 #define BTRROLL_INFO_FILE ".btrroll.info"
@@ -299,28 +308,22 @@ void snapshot_detail_menu(dialog_t *dialog, char *snapshot) {
       strlen(BTRROLL_INFO_FILE) + 2);
   sprintf(info_file_path, "%s/%s", snapshot, BTRROLL_INFO_FILE);
 
-  /*
-  // TODO: make this dialog_display; can use dialog --textbox
-  FILE *info_file = fopen(info_file_path, "r");
-  if (!info_file)
-    return; // TODO error, cleanup
+  dialog->buttons.extra = true;
+  dialog->buttons.help = true;
 
-  fseek(info_file, 0, SEEK_END);
-  const long content_len = ftell(info_file);
-  rewind(info_file);
+  dialog->labels.ok = "Cancel";
+  dialog->labels.extra = "Boot";
+  dialog->labels.help = "Restore";
 
-  char *content = malloc(content_len+1);
-  fread(content, 1, content_len, info_file);
-  fclose(info_file);
-
-  content[content_len] = '\0';
-
-  dialog_ok(dialog, snapshot, "%s", content);
-  */
-
-  dialog_view_file(dialog, snapshot, info_file_path);
-
+  int ret = dialog_view_file(dialog, snapshot, info_file_path);
+  dialog_reset(dialog);
   free(info_file_path);
+
+  if (ret == DIALOG_RESPONSE_EXTRA) {
+    //boot_snapshot(snapshot);
+  } else if (ret == DIALOG_RESPONSE_HELP) {
+    //restore_snapshot(snapshot);
+  }
 }
 
 int provision_subvol(char *path) {

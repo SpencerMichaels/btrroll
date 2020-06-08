@@ -10,6 +10,7 @@
 
 #define BACKTITLE "btrroll 1.0.0"
 
+// Default return codes as defined by the `dialog` binary
 #define DIALOG_CANCEL 1
 #define DIALOG_ERROR -1
 #define DIALOG_ESC 255
@@ -18,8 +19,25 @@
 #define DIALOG_ITEM_HELP 2
 #define DIALOG_OK 0
 
+#define LABEL_ARGS \
+  "--cancel-label", dialog->labels.cancel ? dialog->labels.cancel : "Cancel", \
+  "--exit-label", dialog->labels.exit ? dialog->labels.exit : "Exit", \
+  "--extra-label", dialog->labels.extra ? dialog->labels.extra : "Extra", \
+  "--help-label", dialog->labels.help ? dialog->labels.help : "Help", \
+  "--no-label", dialog->labels.no ? dialog->labels.no : "No", \
+  "--ok-label", dialog->labels.ok ? dialog->labels.ok : "OK", \
+  "--yes-label", dialog->labels.yes ? dialog->labels.yes : "Yes"
+
+// --clear here is used as a no-op
+#define BUTTON_ARGS \
+  dialog->buttons.ok ? "--clear" : "--nook", \
+  dialog->buttons.cancel ? "--clear" : "--nocancel", \
+  dialog->buttons.extra ? "--extra-button" : "--clear", \
+  dialog->buttons.help ? "--help-button" : "--clear"
+
 static char tmp_buf[0x1000];
 
+// Common code snippet facilitating printf-like semantics in dialog messages.
 #define format_msg(buf, format) \
 { \
   int ret; \
@@ -33,6 +51,7 @@ static char tmp_buf[0x1000];
     return ret; \
 }
 
+// Get custom dialog status codes from the env, or fall back to a default.
 int get_status_code_(const char *name, int default_) {
   errno = 0;
   const char *value = getenv(name);
@@ -49,14 +68,22 @@ int get_status_code_(const char *name, int default_) {
   return default_;
 }
 
+// Wrapper for the above where the env var and C symbol names are the same
 #define get_status_code(name) \
   get_status_code_(#name, name)
 
+// Check the return value of dialog and convert it to a response enum
 int check_ret(int ret, dialog_statuses_t statuses) {
   if (ret == statuses.ok)
-    return DIALOG_RESPONSE_YES;
-  if (ret == statuses.cancel || ret == statuses.esc)
-    return DIALOG_RESPONSE_NO;
+    return DIALOG_RESPONSE_OK;
+  if (ret == statuses.cancel || statuses.esc)
+    return DIALOG_RESPONSE_CANCEL;
+  if (ret == statuses.help)
+    return DIALOG_RESPONSE_HELP;
+  if (ret == statuses.item_help)
+    return DIALOG_RESPONSE_ITEM_HELP;
+  if (ret == statuses.extra)
+    return DIALOG_RESPONSE_EXTRA;
   return ret;
 }
 
@@ -72,25 +99,39 @@ void dialog_init(dialog_t * const dialog) {
   dialog->statuses.help = get_status_code(DIALOG_HELP);
   dialog->statuses.item_help = get_status_code(DIALOG_ITEM_HELP);
   dialog->statuses.ok = get_status_code(DIALOG_OK);
+
+  dialog_reset(dialog);
+}
+
+void dialog_reset(dialog_t * const dialog) {
+  memset((void*)&dialog->labels, 0, sizeof(dialog_labels_t));
+
+  dialog->buttons.ok = true;
+  dialog->buttons.cancel = true;
+  dialog->buttons.extra = false;
+  dialog->buttons.help = false;
 }
 
 void dialog_free(dialog_t * const dialog) {
 }
 
+// Choose an item from the given list
 int dialog_choose(
     dialog_t * const dialog,
     const char **items, const size_t items_len,
-    const size_t pos,
+    size_t *choice,
     const char *title, const char *format, ...)
 {
   char pos_str[8];
-  snprintf(pos_str, sizeof(pos_str), "%zu", pos+1);
+  snprintf(pos_str, sizeof(pos_str), "%zu", (choice ? *choice : 0) + 1);
 
   format_msg(tmp_buf, format);
   const char * const args_prefix[] = {
       "dialog",
       "--backtitle", BACKTITLE,
       "--title", title,
+      LABEL_ARGS,
+      BUTTON_ARGS,
       "--default-item", pos_str,
       "--menu", tmp_buf, "0", "0", "10"
   };
@@ -119,16 +160,11 @@ int dialog_choose(
     free((char*)args[lenof(args_prefix) + i*2]);
   free(args);
 
-  if (ret < 0)
-    return ret;
-  if (ret == dialog->statuses.cancel || ret == dialog->statuses.esc)
-    return DIALOG_RESPONSE_CANCEL;
-  if (ret == dialog->statuses.error)
-    return -1;
-
-  return strtol(buf, NULL, 10) - 1;
+  *choice = strtol(buf, NULL, 10) - 1;
+  return check_ret(ret, dialog->statuses);
 }
 
+// Choose YES or NO, defaulting to one or the other on cancellation
 int dialog_confirm(
     dialog_t * const dialog,
     bool default_,
@@ -141,6 +177,8 @@ int dialog_confirm(
       "dialog",
       "--backtitle", BACKTITLE,
       "--title", title,
+      LABEL_ARGS,
+      BUTTON_ARGS,
       default_ ? "--clear" : "--defaultno",
       "--yesno", tmp_buf, "0", "0",
       NULL
@@ -158,6 +196,8 @@ int dialog_ok(
       "dialog",
       "--backtitle", BACKTITLE,
       "--title", title,
+      LABEL_ARGS,
+      BUTTON_ARGS,
       "--msgbox", format, "0", "0",
       NULL
   };
@@ -165,6 +205,7 @@ int dialog_ok(
   return check_ret(run("dialog", args), dialog->statuses);
 }
 
+// Display the contents of a file
 int dialog_view_file(
     dialog_t * const dialog,
     const char * title,
@@ -174,6 +215,10 @@ int dialog_view_file(
       "dialog",
       "--backtitle", BACKTITLE,
       "--title", title,
+      LABEL_ARGS,
+      BUTTON_ARGS,
+      "--tab-correct",
+      "--scrollbar",
       "--textbox", filepath, "0", "0",
       NULL
   };
@@ -181,6 +226,7 @@ int dialog_view_file(
   return check_ret(run("dialog", args), dialog->statuses);
 }
 
+// Clear the screen
 int dialog_clear(dialog_t * const dialog) {
   static const char * args[] = {
       "dialog",

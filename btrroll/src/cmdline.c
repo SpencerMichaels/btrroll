@@ -7,6 +7,7 @@
 
 #define CMDLINE_PATH "/proc/cmdline"
 
+// Read the contents of the kernel command line into the given buffer
 int cmdline_read(
     char * const buf,
     const size_t len)
@@ -35,6 +36,7 @@ int cmdline_read(
   return 0;
 }
 
+// Look up a value by key in the kernel cmdline, with pairs separated by delim
 char *cmdline_find_delim(
     char * const cmdline,
     const char * const key,

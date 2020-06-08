@@ -5,7 +5,9 @@
 
 #include <kver.h>
 
-/* See kernel_version at https://www.kernel.org/doc/Documentation/x86/boot.txt
+/* Extract the version string from a kernel image file
+ *
+ * See kernel_version at https://www.kernel.org/doc/Documentation/x86/boot.txt
  * for more details on what this function is doing.
  */
 int kver(const char * const path, char * const buf, const size_t len) {

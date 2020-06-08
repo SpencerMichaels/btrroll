@@ -11,6 +11,7 @@
 #include <macros.h>
 #include <root.h>
 
+// Get the root device and its mount flags from the kernel command line
 int get_root(
     char * const root, const size_t root_len,
     char * const flags, const size_t flags_len)
@@ -25,6 +26,7 @@ int get_root(
   return 0;
 }
 
+// Mount the root device `source` at `mountpoint` with mount flags `flags`
 int mount_root(
     const char * const source,
     const char * const mountpoint,
@@ -70,7 +72,7 @@ int mount_root(
 /* Utility function. If `str` begins with `target`, return a pointer to the
  * next position in `str` past `target`, otherwise NULL.
  */
-static inline char * match_next(
+static inline char * match_advance(
     char * const str,
     const char * const target,
     const size_t len)
@@ -80,6 +82,7 @@ static inline char * match_next(
   return NULL;
 }
 
+// Get the BTRFS root subvolume path from the root flags or partition defaults
 char * get_btrfs_root_subvol_path(
     const char * const mountpoint,
     char *flags)
@@ -103,10 +106,10 @@ char * get_btrfs_root_subvol_path(
   // If multiple keys exist, take the last one
   do {
     char *value;
-    if ((value = match_next(token, str_and_len("subvol=")))) {
+    if ((value = match_advance(token, str_and_len("subvol=")))) {
       // Value formatted as /path/to/subvol
       path = value;
-    } else if ((value = match_next(token, str_and_len("subvolid=")))) {
+    } else if ((value = match_advance(token, str_and_len("subvolid=")))) {
       // Value formatted as an integer ID
       char *endptr;
       id = strtoull(value, &endptr, 10);
