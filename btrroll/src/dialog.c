@@ -35,6 +35,18 @@
   dialog->buttons.extra ? "--extra-button" : "--clear", \
   dialog->buttons.help ? "--help-button" : "--clear"
 
+typedef struct dialog_statuses {
+  int cancel,
+      error,
+      esc,
+      extra,
+      help,
+      item_help,
+      ok;
+} dialog_statuses_t;
+
+static dialog_statuses_t dialog_statuses;
+
 static char tmp_buf[0x1000];
 
 // Common code snippet facilitating printf-like semantics in dialog messages.
@@ -73,16 +85,16 @@ int get_status_code_(const char *name, int default_) {
   get_status_code_(#name, name)
 
 // Check the return value of dialog and convert it to a response enum
-int check_ret(int ret, dialog_statuses_t statuses) {
-  if (ret == statuses.ok)
+int check_ret(int ret) {
+  if (ret == dialog_statuses.ok)
     return DIALOG_RESPONSE_OK;
-  if (ret == statuses.cancel || statuses.esc)
+  if (ret == dialog_statuses.cancel || dialog_statuses.esc)
     return DIALOG_RESPONSE_CANCEL;
-  if (ret == statuses.help)
+  if (ret == dialog_statuses.help)
     return DIALOG_RESPONSE_HELP;
-  if (ret == statuses.item_help)
+  if (ret == dialog_statuses.item_help)
     return DIALOG_RESPONSE_ITEM_HELP;
-  if (ret == statuses.extra)
+  if (ret == dialog_statuses.extra)
     return DIALOG_RESPONSE_EXTRA;
   return ret;
 }
@@ -92,13 +104,13 @@ void dialog_init(dialog_t * const dialog) {
    * dialog allows its return values to be changed by env vars (!?)
    * we have to take this into account when reacting to its status codes
    */
-  dialog->statuses.cancel = get_status_code(DIALOG_CANCEL);
-  dialog->statuses.error = get_status_code(DIALOG_ERROR);
-  dialog->statuses.esc = get_status_code(DIALOG_ESC);
-  dialog->statuses.extra = get_status_code(DIALOG_EXTRA);
-  dialog->statuses.help = get_status_code(DIALOG_HELP);
-  dialog->statuses.item_help = get_status_code(DIALOG_ITEM_HELP);
-  dialog->statuses.ok = get_status_code(DIALOG_OK);
+  dialog_statuses.cancel = get_status_code(DIALOG_CANCEL);
+  dialog_statuses.error = get_status_code(DIALOG_ERROR);
+  dialog_statuses.esc = get_status_code(DIALOG_ESC);
+  dialog_statuses.extra = get_status_code(DIALOG_EXTRA);
+  dialog_statuses.help = get_status_code(DIALOG_HELP);
+  dialog_statuses.item_help = get_status_code(DIALOG_ITEM_HELP);
+  dialog_statuses.ok = get_status_code(DIALOG_OK);
 
   dialog_reset(dialog);
 }
@@ -161,7 +173,7 @@ int dialog_choose(
   free(args);
 
   *choice = strtol(buf, NULL, 10) - 1;
-  return check_ret(ret, dialog->statuses);
+  return check_ret(ret);
 }
 
 // Choose YES or NO, defaulting to one or the other on cancellation
@@ -184,7 +196,7 @@ int dialog_confirm(
       NULL
   };
 
-  return check_ret(run("dialog", args), dialog->statuses);
+  return check_ret(run("dialog", args));
 }
 
 int dialog_ok(
@@ -202,7 +214,7 @@ int dialog_ok(
       NULL
   };
 
-  return check_ret(run("dialog", args), dialog->statuses);
+  return check_ret(run("dialog", args));
 }
 
 // Display the contents of a file
@@ -223,7 +235,7 @@ int dialog_view_file(
       NULL
   };
 
-  return check_ret(run("dialog", args), dialog->statuses);
+  return check_ret(run("dialog", args));
 }
 
 // Clear the screen
@@ -234,5 +246,5 @@ int dialog_clear(dialog_t * const dialog) {
       NULL
   };
 
-  return check_ret(run("dialog", args), dialog->statuses);
+  return check_ret(run("dialog", args));
 }

@@ -1,6 +1,7 @@
 #ifndef __MACROS_H__
 #define __MACROS_H__
 
+#include <stdbool.h>
 #include <stdio.h>
 
 #define lenof(arr) sizeof(arr)/sizeof(arr[0])

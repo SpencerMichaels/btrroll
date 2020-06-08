@@ -1,5 +1,5 @@
-#ifndef __DIALOG_TUI__
-#define __DIALOG_TUI__
+#ifndef __DIALOG_H__
+#define __DIALOG_H__
 
 #include <limits.h>
 #include <stdbool.h>
@@ -13,16 +13,6 @@ typedef enum dialog_response {
   DIALOG_RESPONSE_ITEM_HELP = 2,
   DIALOG_RESPONSE_EXTRA = 3,
 } dialog_response_t;
-
-typedef struct dialog_statuses {
-  int cancel,
-      error,
-      esc,
-      extra,
-      help,
-      item_help,
-      ok;
-} dialog_statuses_t;
 
 typedef struct dialog_labels {
   const char *cancel,
@@ -42,7 +32,6 @@ typedef struct dialog_buttons {
 } dialog_buttons_t;
 
 typedef struct dialog {
-  dialog_statuses_t statuses;
   dialog_labels_t labels;
   dialog_buttons_t buttons;
 } dialog_t;
