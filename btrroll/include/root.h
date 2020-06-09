@@ -8,8 +8,9 @@ int get_root(
 
 // Mount the root subvolume
 int mount_root(
-    const char * const source,
     const char * const mountpoint,
+    const char * const fs_type,
+    const char * const root,
     const char * const flags);
 
 /* Get the path of the root subvolume for the BTRFS FS mounted at `mountpoint`.

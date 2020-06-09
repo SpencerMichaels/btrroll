@@ -42,7 +42,7 @@ void dialog_free(dialog_t * const dialog);
 
 int dialog_choose(
     dialog_t * const dialog,
-    const char **items, const size_t items_len,
+    const char **items, size_t items_len,
     size_t *choice,
     const char *title, const char *format, ...);
 

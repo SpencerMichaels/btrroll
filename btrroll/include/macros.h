@@ -12,6 +12,9 @@
 #define str_and_len(s) \
   s, strlen(s)
 
+#define arr_and_size(a) \
+  a, sizeof(a)
+
 #define CLEANUP_DECLARE(ret) \
   __label__ CLEANUP; \
   int ret = 0;

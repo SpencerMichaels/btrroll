@@ -88,7 +88,7 @@ int get_status_code_(const char *name, int default_) {
 int check_ret(int ret) {
   if (ret == dialog_statuses.ok)
     return DIALOG_RESPONSE_OK;
-  if (ret == dialog_statuses.cancel || dialog_statuses.esc)
+  if (ret == dialog_statuses.cancel || ret == dialog_statuses.esc)
     return DIALOG_RESPONSE_CANCEL;
   if (ret == dialog_statuses.help)
     return DIALOG_RESPONSE_HELP;
@@ -130,7 +130,7 @@ void dialog_free(dialog_t * const dialog) {
 // Choose an item from the given list
 int dialog_choose(
     dialog_t * const dialog,
-    const char **items, const size_t items_len,
+    const char **items, size_t items_len,
     size_t *choice,
     const char *title, const char *format, ...)
 {
@@ -147,6 +147,14 @@ int dialog_choose(
       "--default-item", pos_str,
       "--menu", tmp_buf, "0", "0", "10"
   };
+
+  // Calculate items_len (if zero) by looking for a NULL item
+  if (!items_len)
+    for (const char **p = items; *p; p++)
+      ++items_len;
+  if (!items_len)
+    return -EINVAL;
+
   const size_t args_len = 2*items_len + lenof(args_prefix) + 1;
   const char **args = malloc(sizeof(char *) * args_len);
 
@@ -210,7 +218,7 @@ int dialog_ok(
       "--title", title,
       LABEL_ARGS,
       BUTTON_ARGS,
-      "--msgbox", format, "0", "0",
+      "--msgbox", tmp_buf, "0", "0",
       NULL
   };
 
