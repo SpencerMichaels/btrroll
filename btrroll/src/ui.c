@@ -30,7 +30,7 @@ int main_menu(dialog_t *dialog, char *root_subvol) {
   int ret = 0;
 
   static const char *ITEMS[] = {
-    "Boot/restore a snapshot",
+    "Boot/restore from a snapshot",
     "Launch a shell",
     "Reboot",
     "Shutdown",
