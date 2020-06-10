@@ -41,12 +41,9 @@ int main(int argc, char **argv) {
   char root[0x1000], flags[0x1000];
   if (get_root(arr_and_size(root), arr_and_size(flags))) {
     perror("get_root");
+    root[0] = 0;
     FAIL(did_mount_fail);
   }
-
-  // TODO: there is a race condition where /dev/disk/by-* is not yet available.
-  // Retry mounting a couple of times, or adjust the systemd service.
-  wait_for_input(3);
 
   // Mount the root device, and unmount automatically on exit
   const char *mountpoint = BTRFS_MOUNTPOINT; // TODO: load from config file
@@ -78,18 +75,17 @@ int main(int argc, char **argv) {
       return EXIT_SUCCESS;
   }
 
-  // TODO: Due to terminal input buffering, I can only wait for Enter unless
-  // I use ncurses. Make this as ergonomic as can given that limitation.
-  // Consider dialog_timeout (dialog --timeout) to give a better indication
-  //if (wait_for_input(1) == 0)
-  //  return EXIT_SUCCESS;
+  // NOTE: Due to terminal input buffering, we can only wait for Enter.
+  if (wait_for_input(1) == 0) // TODO: load timeout value from config file
+    return EXIT_SUCCESS;
 
   dialog_t dialog;
 CLEANUP:
   dialog_init(&dialog);
 
   if (did_mount_fail)
-    dialog_ok(&dialog, "Error", "Mounting the root subvolume failed!");
+    dialog_ok(&dialog, "Error", "Failed to mount the root subvolume from device "
+        "`%s` with flags `%s`: %s", root, flags, strerror(errno));
 
   int ret = main_menu(&dialog, root_subvol);
 
@@ -101,6 +97,7 @@ CLEANUP:
   return ret;
 }
 
+// TODO: support fractional seconds
 int wait_for_input(time_t seconds) {
   fd_set set;
   struct timeval timeout;

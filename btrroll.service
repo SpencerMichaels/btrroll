@@ -1,7 +1,8 @@
 [Unit]
 Description=Restore
+After=initrd-root-device.target
+BindsTo=initrd-root-device.target
 Before=sysroot.mount
-BindsTo=sysroot.mount
 DefaultDependencies=no
 
 [Service]
@@ -13,4 +14,4 @@ RemainAfterExit=yes
 Environment="TERMINFO=/lib/terminfo"
 
 [Install]
-RequiredBy=sysroot.mount
+WantedBy=sysroot.mount
