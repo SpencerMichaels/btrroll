@@ -11,6 +11,6 @@
 #define SUBVOL_SNAP_NAME "snapshots"
 
 #define STATE_BOOT_TEMP "boot"
-#define STATE_BOOT_TEMP_CLEANUP "boot-cleanup"
+#define STATE_BOOT_TEMP_CLEANUP "cleanup"
 
 #endif

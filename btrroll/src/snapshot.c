@@ -1,5 +1,6 @@
 #include <btrfsutil.h>
 #include <errno.h>
+#include <libgen.h>
 #include <linux/magic.h>
 #include <linux/reboot.h>
 #include <stdlib.h>
@@ -8,11 +9,18 @@
 #include <sys/reboot.h>
 #include <unistd.h>
 
+#include <boot.h>
 #include <constants.h>
 #include <dialog.h>
 #include <macros.h>
 #include <path.h>
 #include <snapshot.h>
+#include <subvol.h>
+
+static int swap_symlink(
+    const char *path,
+    const char *src_new,
+    const char* src_fallback);
 
 /* Restore from subvolume
  * (Ask to) Move subvol.d/current to subvol.d/backups and and set it to readonly
@@ -48,32 +56,33 @@ int snapshot_boot(char *root_subvol_dir, const char *snapshot) {
     FAIL(ret);
   }
 
-  if (fputs(STATE_BOOT_TEMP, state_file) < 0) {
+  if (fputs(STATE_BOOT_TEMP, state_file) == EOF && ferror(state_file)) {
     perror("fputs");
     FAIL(ret);
   }
 
 CLEANUP:
   if (state_file)
-    fclose(state_file);
+    if (fclose(state_file))
+      perror("fclose");
   free(state_path);
   free(tmp_path);
 
-  if (!ret) {
-    sync();
-    reboot(LINUX_REBOOT_CMD_RESTART);
-  }
+  if (!ret)
+    restart();
 
   return ret;
 }
 
-int handle_state(char *root_subvol_dir) {
+int snapshot_continue(char *root_subvol) {
   CLEANUP_DECLARE(ret);
-  char *state_path;
-  FILE *state_file;
 
-  state_path = pathcat(root_subvol_dir, STATE_FILE);
-  state_file = fopen(state_path, "w");
+  char *root_subvol_dir = get_subvol_dir_path(root_subvol);
+  char *state_path = pathcat(root_subvol_dir, STATE_FILE);
+  char *tmp_path_rel = pathcat(basename(root_subvol_dir), SUBVOL_TMP_NAME);
+  char *cur_path_rel = pathcat(basename(root_subvol_dir), SUBVOL_CUR_NAME);
+  FILE *state_file = fopen(state_path, "r");
+
   if (!state_file) {
     if (errno == ENOENT)
       goto CLEANUP; // no problem
@@ -81,28 +90,98 @@ int handle_state(char *root_subvol_dir) {
     FAIL(ret);
   }
 
-  char buf[0x100];
-  if (fgets(buf, sizeof(buf), state_file) < 0) {
+  // Read the state value
+  char state[0x100];
+  if (!fgets(state, sizeof(state), state_file) && ferror(state_file)) {
     perror("fread");
     FAIL(ret);
   }
-  buf[sizeof(buf)-1] = 0;
+  state[sizeof(state)-1] = 0;
 
-  if (strncmp(buf, str_and_len(STATE_BOOT_TEMP))) {
-    // Set the subvol symlink to point to temp
-    // Set the next boot entry based on the kernel version in temp
-    // Reboot
+  eprintf("state is: %s\n", state);
+
+  // Done reading the state file
+  if (fclose(state_file)) {
+    perror("fclose");
+    FAIL(ret);
   }
-  else if (strncmp(buf, str_and_len(STATE_BOOT_TEMP_CLEANUP))) {
-    // Set symlink back to current
-    // Delete temp
-    // Remove state file
+  state_file = NULL;
+
+  // boot: Boot into the `temp` subvolume
+  if (!strcmp(STATE_BOOT_TEMP, state)) {
+    // Swap the symlink from `current` to `temp`
+    if (swap_symlink(root_subvol, tmp_path_rel, cur_path_rel)) {
+      perror("swap_symlink");
+      FAIL(ret);
+    }
+
+    // TODO: Set the oneshot boot entry based on the kernel version in temp
+
+    // Set the post-boot cleanup state for the next reboot
+    state_file = fopen(state_path, "w");
+    if (!state_file) {
+      perror("fopen");
+      FAIL(ret);
+    }
+
+    if (fputs(STATE_BOOT_TEMP_CLEANUP, state_file) == EOF && ferror(state_file)) {
+      perror("fputs");
+      FAIL(ret);
+    }
+
+    goto CLEANUP;
+  }
+
+  // boot-cleanup: Cleanup after having booted into the `temp` subvolume
+  else if (!strcmp(STATE_BOOT_TEMP_CLEANUP, state)) {
+    // Swap the symlink back from `temp` to `current`
+    if (swap_symlink(root_subvol, cur_path_rel, tmp_path_rel)) {
+      perror("swap_symlink");
+      FAIL(ret);
+    }
+
+    // Delete the `temp` subvolume
+    char *tmp_path = pathcat(root_subvol_dir, SUBVOL_TMP_NAME);
+    enum btrfs_util_error err = btrfs_util_delete_subvolume(tmp_path, 0);
+    free(tmp_path);
+
+    if (err != BTRFS_UTIL_OK) {
+      eprintf("error: %s\n", btrfs_util_strerror(err));
+      FAIL(ret);
+    }
+
+    // Remove the state file
+    if (remove(state_path))
+      perror("remove");
+
+    goto CLEANUP;
   }
 
 CLEANUP:
   if (state_file)
-    fclose(state_file);
+    if (fclose(state_file))
+      perror("fclose");
   free(state_path);
+  free(tmp_path_rel);
+  free(cur_path_rel);
+  free(root_subvol_dir);
 
   return ret;
+}
+
+static int swap_symlink(const char *path, const char *src_new, const char* src_fallback) {
+  // Remove the original symlink
+  if (unlink(path)) {
+    perror("unlink");
+    return -1;
+  }
+
+  if (symlink(src_new, path)) {
+    perror("symlink");
+    if (symlink(src_fallback, path))
+      perror("symlink");
+    return -1;
+  }
+
+  return 0;
 }

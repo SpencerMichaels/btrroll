@@ -3,5 +3,6 @@
 
 int snapshot_restore(char *root_subvol_dir, const char *snapshot);
 int snapshot_boot(char *root_subvol_dir, const char *snapshot);
+int snapshot_continue(char *root_subvol);
 
 #endif

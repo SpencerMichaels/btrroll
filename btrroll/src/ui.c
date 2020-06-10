@@ -4,18 +4,17 @@
 #include <errno.h>
 #include <libgen.h>
 #include <linux/magic.h>
-#include <linux/reboot.h>
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/reboot.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/vfs.h>
 
+#include <boot.h>
 #include <constants.h>
 #include <dialog.h>
 #include <macros.h>
@@ -49,9 +48,6 @@ int main_menu(dialog_t *dialog, char *root_subvol) {
 
   size_t choice = 0;
   while (true) {
-    //dialog->buttons.ok = false;
-    //dialog->buttons.cancel = false;
-
     ret = dialog_choose(dialog,
         ITEMS, lenof(ITEMS), &choice,
         "Main Menu", "What would you like to do?");
@@ -78,6 +74,7 @@ int main_menu(dialog_t *dialog, char *root_subvol) {
             dialog_ok(dialog, "Error", "Failed to provision: %s", strerror(errno));
           } else {
             is_provisioned = 1;
+            break;
           }
         }
         if (chdir(root_subvol_dir)) {
@@ -93,19 +90,13 @@ int main_menu(dialog_t *dialog, char *root_subvol) {
         run("sh", NULL);
         break;
       case 2: // Reboot
-        // TODO: Make sure this does not cause any data loss
-        sync();
-        reboot(LINUX_REBOOT_CMD_RESTART);
+        restart();
         ret = 0;
         goto CLEANUP;
       case 3: // Shut down
-        // TODO: Make sure this does not cause any data loss
-        sync();
-        reboot(LINUX_REBOOT_CMD_POWER_OFF);
+        shutdown();
         ret = 0;
         goto CLEANUP;
-      //case 4: // Continue booting
-      //  ret = 0;
       default:
         goto CLEANUP;
     }
@@ -178,7 +169,6 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
     // This function repurposes the extra/help buttons as boot/restore
     char * snapshot = snapshots[choice];
     ret = snapshot_detail_menu(dialog, snapshot);
-    dialog_ok(dialog, "Ret", "%d", ret);
 
     if (ret == DIALOG_RESPONSE_EXTRA) {
       if (snapshot_boot(root_subvol_dir, snapshot))

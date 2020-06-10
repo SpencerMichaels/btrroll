@@ -10,12 +10,14 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <boot.h>
 #include <constants.h>
 #include <dialog.h>
 #include <macros.h>
 #include <path.h>
 #include <root.h>
 #include <run.h>
+#include <snapshot.h>
 #include <subvol.h>
 #include <ui.h>
 
@@ -24,9 +26,6 @@ static const char *btrfs_root_mountpoint = NULL;
 int wait_for_input(time_t seconds);
 int btrfs_root_mount(const char *mountpoint, char *root, char *flags);
 void btrfs_root_unmount();
-
-void snapshot_restore(const char *snapshot);
-void snapshot_boot(const char *snapshot);
 
 int main(int argc, char **argv) {
   CLEANUP_DECLARE(did_mount_fail);
@@ -70,10 +69,13 @@ int main(int argc, char **argv) {
     root_subvol = tmp;
   }
 
-  {
-    char *subvol_dir_path = get_subvol_dir_path(root_subvol);
-    // TODO: check .btrroll-state and act on it if necessary
-    free(subvol_dir_path);
+  { // Check .btrroll-state and act on it if necessary
+    int err = snapshot_continue(root_subvol);
+    if (err < 0) {
+      perror("snapshot_continue");
+      return EXIT_FAILURE;
+    } else if (err > 0)
+      return EXIT_SUCCESS;
   }
 
   // TODO: Due to terminal input buffering, I can only wait for Enter unless
