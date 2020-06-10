@@ -20,17 +20,53 @@
 static int swap_symlink(
     const char *path,
     const char *src_new,
-    const char* src_fallback);
+    const char *src_fallback);
 
 /* Restore from subvolume
- * (Ask to) Move subvol.d/current to subvol.d/backups and and set it to readonly
+
  * Make an RW copy of the subvolume to restore in subvol.d/current
  * Set the default boot entry based on the kernel version in the new current
  * Reboot
  */
 
-int snapshot_restore(char *root_subvol_dir, const char *snapshot) {
-  // btrfs_util_set_subvolume_read_only
+int snapshot_restore(char *root_subvol_dir, const char *snapshot, const char *backup) {
+  CLEANUP_DECLARE(ret);
+
+  char *current = pathcat(root_subvol_dir, SUBVOL_CUR_NAME);
+  int err;
+
+  // Back up the current subvolume if desired
+  if (backup) {
+    // Move subvol.d/current to subvol.d/snapshots/backup
+    if (rename(current, backup)) {
+      perror("rename");
+      FAIL(ret);
+    }
+    // Make it read-only
+    err = btrfs_util_set_subvolume_read_only(backup, 1);
+    if (err != BTRFS_UTIL_OK) {
+      eprintf("error: %s\n", btrfs_util_strerror(err));
+      FAIL(ret);
+    }
+  }
+  // otherwise just delete subvol.d/current
+  else if ((err = btrfs_util_delete_subvolume(current, 0)) != BTRFS_UTIL_OK) {
+    eprintf("error: %s\n", btrfs_util_strerror(err));
+    FAIL(ret);
+  }
+
+  // Create an RW copy of the snapshot in place of the old `current` subvolume
+  err = btrfs_util_create_snapshot(snapshot, current, 0, NULL, NULL);
+  if (err != BTRFS_UTIL_OK) {
+    eprintf("error: %s\n", btrfs_util_strerror(err));
+    FAIL(ret);
+  }
+
+  restart();
+
+CLEANUP:
+  free(current);
+  return ret;
 }
 
 int snapshot_boot(char *root_subvol_dir, const char *snapshot) {
@@ -129,6 +165,7 @@ int snapshot_continue(char *root_subvol) {
       FAIL(ret);
     }
 
+    ret = 1; // continue without interactive console
     goto CLEANUP;
   }
 
@@ -154,6 +191,7 @@ int snapshot_continue(char *root_subvol) {
     if (remove(state_path))
       perror("remove");
 
+    // continue as normal
     goto CLEANUP;
   }
 

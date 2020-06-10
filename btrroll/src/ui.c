@@ -167,15 +167,50 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
       break;
 
     // This function repurposes the extra/help buttons as boot/restore
-    char * snapshot = snapshots[choice];
+    char *snapshot = snapshots[choice];
     ret = snapshot_detail_menu(dialog, snapshot);
 
+    // `Boot` selected
     if (ret == DIALOG_RESPONSE_EXTRA) {
       if (snapshot_boot(root_subvol_dir, snapshot))
         dialog_ok(dialog, "Error", "Failed to set up snapshot for booting: %s", strerror(errno));
       break;
-    } else if (ret == DIALOG_RESPONSE_HELP) {
-      snapshot_restore(root_subvol_dir, snapshot);
+    }
+
+    // `Restore` selected
+    else if (ret == DIALOG_RESPONSE_HELP) {
+      char *backup = NULL;
+
+      // Offer to back up the current root subvol
+      if (dialog_confirm(dialog, 0, "Restore",
+          "Would you like to save a snapshot of the current root subvolume?")
+          == DIALOG_RESPONSE_YES)
+      {
+        static const size_t BACKUP_LEN = 0x400;
+        backup = malloc(BACKUP_LEN);
+
+        // Allow the user to set a name
+        while (true) {
+          snprintf(backup, BACKUP_LEN, "%s.pre-restore", snapshot);
+          if (dialog_input(dialog, backup, backup, BACKUP_LEN, "Backup Name",
+                "What would you like to name the backup?") != DIALOG_RESPONSE_OK)
+          {
+            free(backup);
+            backup = NULL;
+            break;
+          }
+
+          // Make sure the snapshot doesn't already exist
+          if (!access(backup, R_OK))
+            dialog_ok(dialog, "Error", "A snapshot already exists with the name `%s`. "
+                "Please choose a different name.", backup);
+          else
+            break;
+        }
+      }
+
+      snapshot_restore(root_subvol_dir, snapshot, backup);
+      free(backup);
       break;
     }
   }

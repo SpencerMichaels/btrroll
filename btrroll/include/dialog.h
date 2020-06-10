@@ -51,6 +51,11 @@ int dialog_confirm(
     bool default_,
     const char *title, const char *format, ...);
 
+int dialog_input(
+    dialog_t * const dialog,
+    const char *init, char *out, const size_t out_len,
+    const char *title, const char *format, ...);
+
 int dialog_ok(
     dialog_t * const dialog,
     const char *title, const char *format, ...);

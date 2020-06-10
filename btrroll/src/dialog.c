@@ -207,6 +207,25 @@ int dialog_confirm(
   return check_ret(run("dialog", args));
 }
 
+int dialog_input(
+    dialog_t * const dialog,
+    const char *init, char *out, const size_t out_len,
+    const char *title, const char *format, ...)
+{
+  format_msg(tmp_buf, format);
+  const char * args[] = {
+      "dialog",
+      "--backtitle", BACKTITLE,
+      "--title", title,
+      LABEL_ARGS,
+      BUTTON_ARGS,
+      "--inputbox", tmp_buf, "0", "0", init,
+      NULL
+  };
+
+  return check_ret(run_pipe("dialog", args, NULL, 0, out, out_len));
+}
+
 int dialog_ok(
     dialog_t * const dialog,
     const char *title, const char *format, ...)
