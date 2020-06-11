@@ -38,9 +38,9 @@ int main_menu(dialog_t *dialog, char *root_subvol) {
     // "Exit (continue booting)"
   };
 
-  int is_provisioned = is_subvol_provisioned(root_subvol);
-  int is_toplevel = is_subvol_toplevel(root_subvol);
-  char * root_subvol_dir = get_subvol_dir_path(root_subvol);
+  int is_provisioned = root_subvol ? is_subvol_provisioned(root_subvol) : 0;
+  int is_toplevel = root_subvol ? is_subvol_toplevel(root_subvol) : 0;
+  char * root_subvol_dir = root_subvol ? get_subvol_dir_path(root_subvol) : NULL;
 
   if (is_provisioned < 0) {
     dialog_ok(dialog, "Error", "Could not determine whether or not the root " \
@@ -69,6 +69,10 @@ int main_menu(dialog_t *dialog, char *root_subvol) {
     switch (choice) {
       case 0: // Boot or restore from a snapshot
         if (!is_provisioned) {
+          if (!root_subvol) {
+            dialog_ok(dialog, "Error", "The root subvolume is not mounted.");
+            break;
+          }
           if (is_toplevel) {
             dialog_ok(dialog, "Error", "The system root resides directly on "
                 "the top-level subvolume. btrroll's rollback functionality is "
@@ -229,10 +233,17 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
     char *snapshot = snapshots[choice];
     ret = snapshot_detail_menu(dialog, snapshot);
 
+    static const char *esp_path = "/esp"; // TODO
+
     // `Boot` selected
     if (ret == DIALOG_RESPONSE_EXTRA) {
-      if (snapshot_boot(root_subvol_dir, snapshot))
-        dialog_ok(dialog, "Error", "Failed to set up snapshot for booting: %s", strerror(errno));
+      char *boot_entry = boot_entry_menu(dialog, snapshot, esp_path);
+      if (!boot_entry || bootctl_set_oneshot(esp_path, boot_entry) && errno)
+        dialog_ok(dialog, "Error", "Failed to set oneshot boot entry: %s", strerror(errno));
+      //else
+      //  if (snapshot_boot(root_subvol_dir, snapshot))
+      //    dialog_ok(dialog, "Error", "Failed to set up snapshot for booting: %s", strerror(errno));
+      free(boot_entry);
       break;
     }
 
@@ -273,8 +284,15 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
         }
       }
 
-      if (!cancelled)
-        snapshot_restore(root_subvol_dir, snapshot, backup);
+      if (!cancelled) {
+        char *boot_entry = boot_entry_menu(dialog, snapshot, esp_path);
+        if (!boot_entry || !bootctl_set_default(esp_path, boot_entry) && errno)
+          dialog_ok(dialog, "Error", "Failed to set default boot entry: %s", strerror(errno));
+        else
+          snapshot_restore(root_subvol_dir, snapshot, backup);
+        free(boot_entry);
+      }
+
       free(backup);
       break;
     }
@@ -290,7 +308,7 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
     perror("chdir");
 }
 
-int snapshot_detail_menu(dialog_t *dialog, char *snapshot) {
+int snapshot_detail_menu(dialog_t *dialog, const char *snapshot) {
   char *info_file_path = pathcat(snapshot, INFO_FILE);
 
   dialog->buttons.extra = true;
@@ -308,6 +326,62 @@ int snapshot_detail_menu(dialog_t *dialog, char *snapshot) {
 
   dialog_reset(dialog);
   free(info_file_path);
+
+  return ret;
+}
+
+char * boot_entry_menu(dialog_t *dialog, const char *snapshot, const char *esp_path) {
+  __label__ CLEANUP;
+  char *ret = NULL;
+
+  bootctl_entry_t entries[32];
+  int num_entries = get_compatible_boot_entries(snapshot, esp_path, entries, lenof(entries));
+  if (num_entries < 0) {
+    perror("get_compatible_boot_entries");
+    goto CLEANUP;
+  }
+  else if (num_entries == 0) {
+    dialog_ok(dialog, "Error", "There are no boot entries compatible with this snapshot.");
+    goto CLEANUP;
+  }
+  else if (num_entries == 1) {
+    // Only one compatible entry; no need to select
+    ret = strdup(entries[0].id);
+    goto CLEANUP;
+  }
+
+  // TODO: descs for .efi and .conf files (process will be different)
+  // Possibly offer an "Info" button to view .confs directly
+  char *items[sizeof(entries)];
+  char *descs[sizeof(entries)];
+  for (int i = 0; i < num_entries; ++i) {
+    bootctl_entry_t *e = entries + i;
+    items[i] = strdup(e->id ? e->id : "");
+    descs[i] = strdup(e->options ? e->options : "");
+  }
+
+  size_t choice = 0;
+  int err = dialog_choose(dialog, (const char**)items, (const char**)descs,
+        num_entries, &choice, "Choose a Boot Entry",
+        "Multiple available boot entries are compatible with this snapshot. "
+        "Please choose one from the list below.");
+
+  for (int i = 0; i < num_entries; ++i) {
+    free(items[i]);
+    free(descs[i]);
+  }
+
+  if  (err == DIALOG_RESPONSE_OK) {
+    ret = strdup(entries[choice].id);
+  }
+  else if (err == DIALOG_RESPONSE_CANCEL) {
+    errno = 0;
+  }
+
+CLEANUP:
+  for (int i = 0; i < num_entries; ++i) {
+    bootctl_entry_free(entries + i);
+  }
 
   return ret;
 }

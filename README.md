@@ -9,13 +9,19 @@ known-good version of your root partition when an update renders it inoperable
 handy rescue console, for those times when you want to drop to a shell right in
 your `initrd`.
 
-## Requirements
+## Requirements & Recommendations
 
 `btrroll` requires that your root partition be located on a BTRFS subvolume
 (_not_ the volume root directory). A typical BTRFS-based Linux install will
 generally fulfill this requirement: the BTRFS sysadmin guide already
 [recommends](https://btrfs.wiki.kernel.org/index.php/SysadminGuide#Managing_Snapshots)
 keeping the system root on a subvolume as opposed to the filesystem root.
+
+`btrroll` works best with the `systemd-boot` UEFI bootloader, although this is
+not a strict requirement. If your system uses `systemd-boot`, `btrroll` will
+automatically select a compatible boot entry when booting into a snapshot that
+relies on an older kernel version. If multiple compatible entries exist, it
+will prompt you to choose one; if none exist, it will notify you.
 
 `btrroll` supports both systemd-based and traditional initscript-based initial
 ramdisk configurations.
@@ -26,9 +32,10 @@ If you're using Arch Linux, you can install `btrroll` using the [btrroll](TKTK)
 AUR package. Otherwise, you can clone this repository manually and run `make &&
 sudo make install` in the root directory.
 
-`btrroll` has only one external dependency: the `dialog` binary, which it
-uses for its interface. A typical Arch install likely already has `dialog`
-installed.
+* **Build dependencies:** `btrfs-progs` and standard `glibc`
+* **Runtime dependencies:** `dialog` and `btrfs-progs`
+
+A typical Arch install on BTRFS likely has all of the above installed already.
 
 ## Usage
 
@@ -96,9 +103,12 @@ TKTK: to be finalized
 * `timeout`: The time (in seconds) to wait for the user to press "enter" to
   bring up the `btrroll` console before continuing to boot. If zero, the
   console will always appear. Defaults to `1`.
-* `mountpoint`: The directory to which `btrroll` will mount the BTRFS root
-  partition within the `initrd` when symlink/snapshot manipulation is required.
+* `root_mountpoint`: The directory to which `btrroll` will mount the BTRFS root
+  partition within the `initrd` when manipulating symlinks/snapshots.
   Defaults to `/btrfs_root`.
+* `esp_mountpoint`: The directory to which `btrroll` will mount the EFI System
+  Partition (ESP) within the `initrd` when manipulating boot entries.
+  Defaults to `/efi`.
 
 ## How it Works
 
@@ -118,7 +128,7 @@ the need to alter kernel command line parameters.
 [x] ensure no directory traversal when entering backup filenames
 [x] check for and reject toplevel root partition when provisioning
 [x] handle a missing or invalid snapshots directory
+[~] boot into different kernel versions with systemd-boot
 [ ] use cmdline flags when mounting btrfs_root
 [ ] move PKGBUILD install to "make install"
 [ ] add config file
-[ ] boot into different kernel versions with systemd-boot

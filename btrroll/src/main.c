@@ -22,20 +22,24 @@
 #include <ui.h>
 
 static const char *btrfs_root_mountpoint = NULL;
+static const char *esp_mountpoint = NULL;
 
 int wait_for_input(time_t seconds);
 int btrfs_root_mount(const char *mountpoint, char *root, char *flags);
-void btrfs_root_unmount();
+int esp_mount(const char *mountpoint);
+void unmount_all();
 
 int main(int argc, char **argv) {
   CLEANUP_DECLARE(did_mount_fail);
 
-  // Check that we're in initramfs; otherwise, undefined behavior may occur
+  // Check that we're in initramfs; otherwise, unexpected behavior may occur
+  /*
   if (access(INITRD_RELEASE_PATH, F_OK)) {
     eprintf("btrroll: error: could not access " INITRD_RELEASE_PATH "! " \
             "btrroll must be run from within the initial ramdisk.\n");
     return EXIT_FAILURE;
   }
+  */
 
   dialog_t dialog;
   dialog_init(&dialog);
@@ -44,17 +48,25 @@ int main(int argc, char **argv) {
   char root[0x1000], flags[0x1000];
   if (get_root(arr_and_size(root), arr_and_size(flags))) {
     perror("get_root");
-    root[0] = 0;
+    root[0] = '\0';
+    flags[0] = '\0';
     FAIL(did_mount_fail);
   }
 
   // Mount the root device, and unmount automatically on exit
+  // TODO: segfault if mounts failed
+  // TODO: fails if already mounted (use mktemp?)
   const char *mountpoint = BTRFS_MOUNTPOINT; // TODO: load from config file
   if (btrfs_root_mount(mountpoint, root, flags)) {
     perror("btrfs_root_mount");
     FAIL(did_mount_fail);
   }
-  atexit(btrfs_root_unmount);
+  if (esp_mount("/esp")) {
+    perror("esp_mount");
+    FAIL(did_mount_fail);
+  }
+
+  atexit(unmount_all);
 
   // Get the path to the root subvolume (distinct from the root _device_)
   char *root_subvol = get_btrfs_root_subvol_path(mountpoint, flags);
@@ -83,9 +95,11 @@ int main(int argc, char **argv) {
     return EXIT_SUCCESS;
 
 CLEANUP:
-  if (did_mount_fail)
+  if (did_mount_fail) {
     dialog_ok(&dialog, "Error", "Failed to mount the root subvolume from device "
         "`%s` with flags `%s`: %s", root, flags, strerror(errno));
+    root_subvol = NULL;
+  }
 
   int ret = main_menu(&dialog, root_subvol);
 
@@ -112,6 +126,23 @@ int wait_for_input(time_t seconds) {
   while ((ret = select(FD_SETSIZE, &set, NULL, NULL, &timeout)) < 0 && errno == EAGAIN);
 
   return ret;
+}
+
+int esp_mount(const char *mountpoint) {
+  // Create the mountpoint directory if it does not already exist
+  if (mkdir(mountpoint, 0700) && errno != EEXIST) {
+    perror("mkdir");
+    return -1;
+  }
+
+  if (mount_esp("/esp")) {
+    perror("mount_esp");
+    return -1;
+  }
+
+  esp_mountpoint = mountpoint;
+
+  return 0;
 }
 
 int btrfs_root_mount(const char *mountpoint, char *root, char *flags) {
@@ -152,8 +183,12 @@ int btrfs_root_mount(const char *mountpoint, char *root, char *flags) {
   return 0;
 }
 
-void btrfs_root_unmount() {
+void unmount_all() {
   if (btrfs_root_mountpoint && umount(btrfs_root_mountpoint))
       perror("umount");
+  if (esp_mountpoint && umount(esp_mountpoint))
+      perror("umount");
+
   btrfs_root_mountpoint = NULL;
+  esp_mountpoint = NULL;
 }

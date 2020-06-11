@@ -1,5 +1,5 @@
 [Unit]
-Description=Restore
+Description=btrroll
 After=initrd-root-device.target
 BindsTo=initrd-root-device.target
 Before=sysroot.mount
@@ -14,4 +14,4 @@ RemainAfterExit=yes
 Environment="TERMINFO=/lib/terminfo"
 
 [Install]
-WantedBy=sysroot.mount
+RequiredBy=sysroot.mount

@@ -3,6 +3,7 @@
 build() {
     add_runscript
 
+    add_module vfat # for mounting the EFI partition
     add_binary btrfs
     add_binary dialog
     add_file /lib/terminfo/l/linux
