@@ -115,9 +115,9 @@ the need to alter kernel command line parameters.
 
 # TODO
 
-* boot into different kernel versions with systemd-boot
-* ensure no directory traversal when entering backup filenames
-* add config file
-* check for and reject toplevel root partition when provisioning
-* handle missing or invalid snapshots directory
-* move PKGBUILD install to "make install"
+[x] ensure no directory traversal when entering backup filenames
+[x] check for and reject toplevel root partition when provisioning
+[x] handle a missing or invalid snapshots directory
+[ ] move PKGBUILD install to "make install"
+[ ] add config file
+[ ] boot into different kernel versions with systemd-boot

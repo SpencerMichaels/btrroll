@@ -37,6 +37,9 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
+  dialog_t dialog;
+  dialog_init(&dialog);
+
   // Get the root device and its mount flags from the kernel command line
   char root[0x1000], flags[0x1000];
   if (get_root(arr_and_size(root), arr_and_size(flags))) {
@@ -79,10 +82,7 @@ int main(int argc, char **argv) {
   if (wait_for_input(1) == 0) // TODO: load timeout value from config file
     return EXIT_SUCCESS;
 
-  dialog_t dialog;
 CLEANUP:
-  dialog_init(&dialog);
-
   if (did_mount_fail)
     dialog_ok(&dialog, "Error", "Failed to mount the root subvolume from device "
         "`%s` with flags `%s`: %s", root, flags, strerror(errno));

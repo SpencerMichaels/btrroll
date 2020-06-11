@@ -38,12 +38,18 @@ int main_menu(dialog_t *dialog, char *root_subvol) {
   };
 
   int is_provisioned = is_subvol_provisioned(root_subvol);
+  int is_toplevel = is_subvol_toplevel(root_subvol);
   char * root_subvol_dir = get_subvol_dir_path(root_subvol);
 
   if (is_provisioned < 0) {
     dialog_ok(dialog, "Error", "Could not determine whether or not the root " \
         "subvolume `%s` is provisioned: %s", root_subvol, strerror(errno));
-    is_provisioned = 0;
+    is_provisioned = 0; // assume the worst case
+  }
+  if (is_toplevel < 0) {
+    dialog_ok(dialog, "Error", "Could not determine whether or not the root " \
+        "subvolume `%s` is top-level: %s", root_subvol, strerror(errno));
+    is_toplevel = 1; // assume the worst case
   }
 
   size_t choice = 0;
@@ -62,7 +68,14 @@ int main_menu(dialog_t *dialog, char *root_subvol) {
     switch (choice) {
       case 0: // Boot or restore from a snapshot
         if (!is_provisioned) {
-          const int answer = dialog_confirm(dialog, 0,
+          if (is_toplevel) {
+            dialog_ok(dialog, "Error", "The system root resides directly on "
+                "the top-level subvolume. btrroll's rollback functionality is "
+                "not compatible with this configuration.");
+            break;
+          }
+
+          int answer = dialog_confirm(dialog, 0,
               "Error",
               "The root subvolume is not provisioned for use with btrroll. " \
               "Would you like to provision it?");
@@ -111,10 +124,13 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
   // Change to the "snapshots" directory. This is much easier than staying in
   // place and constructing relative paths for each snapshot.
   if (chdir(SUBVOL_SNAP_NAME)) {
-    if (errno != ENOENT) {
+    if (errno == ENOENT) {
+      dialog_ok(dialog, "Warning",
+          "There is no " SUBVOL_SNAP_NAME " directory in `%s`. Add one and "
+          "populate it with snapshots in order to use this functionality.");
+    } else {
       dialog_ok(dialog, "Error",
-          "Could not chdir to `" SUBVOL_SNAP_NAME "`: %s", strerror(errno));
-      return;
+          "Failed to chdir to `" SUBVOL_SNAP_NAME "`: %s", strerror(errno));
     }
     return;
   }
@@ -182,6 +198,7 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
       char *backup = NULL;
 
       // Offer to back up the current root subvol
+      bool cancelled = false;
       if (dialog_confirm(dialog, 0, "Restore",
           "Would you like to save a snapshot of the current root subvolume?")
           == DIALOG_RESPONSE_YES)
@@ -195,13 +212,17 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
           if (dialog_input(dialog, backup, backup, BACKUP_LEN, "Backup Name",
                 "What would you like to name the backup?") != DIALOG_RESPONSE_OK)
           {
-            free(backup);
             backup = NULL;
+            cancelled = true;
             break;
           }
 
-          // Make sure the snapshot doesn't already exist
-          if (!access(backup, R_OK))
+          // Validate the snapshot name
+          if (strchr(backup, '/'))
+            dialog_ok(dialog, "Error", "The backup name cannot contain slashes.", backup);
+          else if (backup[0] == '.')
+            dialog_ok(dialog, "Error", "The snapshot name cannot start with a dot.", backup);
+          else if (!access(backup, R_OK))
             dialog_ok(dialog, "Error", "A snapshot already exists with the name `%s`. "
                 "Please choose a different name.", backup);
           else
@@ -209,7 +230,8 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
         }
       }
 
-      snapshot_restore(root_subvol_dir, snapshot, backup);
+      if (!cancelled)
+        snapshot_restore(root_subvol_dir, snapshot, backup);
       free(backup);
       break;
     }

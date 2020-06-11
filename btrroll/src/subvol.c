@@ -70,14 +70,20 @@ char * get_btrfs_root_subvol_path(
 
   // The path was explicitly specified with subvolid=X; look up the path
   if (id) {
-    if (btrfs_util_subvolume_path(mountpoint, id, &path) != BTRFS_UTIL_OK)
+    enum btrfs_util_error err = btrfs_util_subvolume_path(mountpoint, id, &path);
+    if (err != BTRFS_UTIL_OK) {
+      eprintf("error: %s\n", btrfs_util_strerror(err));
       return NULL;
+    }
     return path;
   }
 
   // The path was not specified; look up the mountpoint's default subvolume
-  if (btrfs_util_get_default_subvolume(mountpoint, &id) != BTRFS_UTIL_OK)
+  enum btrfs_util_error err = btrfs_util_get_default_subvolume(mountpoint, &id);
+  if (err != BTRFS_UTIL_OK) {
+    eprintf("error: %s\n", btrfs_util_strerror(err));
     return NULL;
+  }
   return path;
 }
 
@@ -90,6 +96,16 @@ char * get_subvol_dir_path(char *subvol_path) {
   strcat(tmp, SUBVOL_DIR_SUFFIX);
 
   return tmp;
+}
+
+int is_subvol_toplevel(char *path) {
+  uint64_t id;
+  enum btrfs_util_error err = btrfs_util_subvolume_id(path, &id);
+  if (err != BTRFS_UTIL_OK) {
+    eprintf("error: %s\n", btrfs_util_strerror(err));
+    return -1;
+  }
+  return id == 5;
 }
 
 int is_subvol_provisioned(char *path) {
