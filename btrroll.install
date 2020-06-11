@@ -6,6 +6,7 @@ build() {
     add_binary btrfs
     add_binary dialog
     add_file /lib/terminfo/l/linux
+    hash bootctl && add_binary bootctl
 
     #add_file /etc/btrroll.conf
     add_binary btrroll

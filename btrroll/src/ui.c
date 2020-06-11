@@ -13,6 +13,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/vfs.h>
+#include <time.h>
 
 #include <boot.h>
 #include <constants.h>
@@ -55,7 +56,7 @@ int main_menu(dialog_t *dialog, char *root_subvol) {
   size_t choice = 0;
   while (true) {
     ret = dialog_choose(dialog,
-        ITEMS, lenof(ITEMS), &choice,
+        ITEMS, NULL, lenof(ITEMS), &choice,
         "Main Menu", "What would you like to do?");
 
     dialog_reset(dialog);
@@ -141,12 +142,13 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
     return;
   }
 
-  const size_t SNAPSHOTS_LEN_MAX = 0x400;
-  char *snapshots[SNAPSHOTS_LEN_MAX];
+  // Collect a list of snapshots and their descriptions.
+  char *snapshots[0x400];
+  char *descriptions[0x100];
   {
     struct dirent *ep;
-    char ** const snapshots_end = snapshots + SNAPSHOTS_LEN_MAX;
-    char **p = snapshots;
+    char ** const snapshots_end = snapshots + lenof(snapshots) - 1;
+    char **p = snapshots, **q = descriptions;
     errno = 0;
     while ((ep = readdir(snapshots_dir)) && p != snapshots_end) {
       if (errno) {
@@ -154,13 +156,53 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
             "Failed to read snapshots directory: %s", strerror(errno));
         break;
       }
-      errno = 0;
 
       // Record the names of all applicable directories in snapshots/
       if (ep->d_type == DT_DIR &&                               // Is a directory
           ep->d_name[0] != '.' &&                               // Is not hidden
           btrfs_util_is_subvolume(ep->d_name) == BTRFS_UTIL_OK) // Is a subvol
-        *p++ = strcpy(malloc(strlen(ep->d_name)+1), ep->d_name);
+      {
+        // Note the snapshot name
+        char *snapshot = ep->d_name;
+        *p++ = strdup(snapshot);
+
+        // Get the last-modified time for the snapshot
+        struct stat sb;
+        char mtime[0x100];
+        if (stat(snapshot, &sb)) {
+          perror("stat");
+          strcpy(mtime, "unknown");
+        } else {
+          strftime(mtime, sizeof(mtime), "%c", localtime(&sb.st_mtime));
+        }
+
+        // Get the kernel versions supported by the snapshot
+        char *versions[0x100];
+        char versions_str[0x1000];
+        int num_versions = get_kernel_versions(snapshot, versions, lenof(versions));
+        if (num_versions < 0) {
+          snprintf(versions_str, sizeof(versions_str), "unknown (%s)", strerror(errno));
+        } else {
+          char *dest = versions_str;
+          for (int i = 0; i < num_versions; ++i) {
+            char *v = versions[i];
+            dest += snprintf(dest,
+                sizeof(versions_str) - (dest - versions_str),
+                i == (num_versions-1) ? "%s" : "%s, ", v);
+            free(v);
+          }
+        }
+
+        // Compile the final description
+        static const size_t DESC_LEN = 0x1000;
+        char *desc = malloc(DESC_LEN);
+        snprintf(desc, DESC_LEN, "Last modified: %s. Kernel version(s): %s.",
+            mtime, versions_str);
+
+        *q++ = desc;
+      }
+
+      errno = 0;
     }
     *p = NULL;
 
@@ -173,10 +215,11 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
     return;
   }
 
+  // Allow the user to choose between the collated snapshots
   size_t choice = 0;
   while (true) {
     int ret = dialog_choose(dialog,
-        (const char**)snapshots, 0, &choice,
+        (const char**)snapshots, (const char**)descriptions, 0, &choice,
         "Snapshots", "Select a snapshot from the list below.");
 
     if (ret == DIALOG_RESPONSE_CANCEL || ret < 0)
@@ -213,7 +256,7 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
                 "What would you like to name the backup?") != DIALOG_RESPONSE_OK)
           {
             backup = NULL;
-            cancelled = true;
+            cancelled = true; // don't continue with the restore process
             break;
           }
 
@@ -238,6 +281,8 @@ void snapshot_menu(dialog_t *dialog, char *root_subvol_dir) {
   }
 
   for (char **p = snapshots; *p; p++)
+    free(*p);
+  for (char **p = descriptions; *p; p++)
     free(*p);
 
   // Return to the parent directory

@@ -1,4 +1,5 @@
 #include <btrfsutil.h>
+#include <dirent.h>
 #include <errno.h>
 #include <libgen.h>
 #include <linux/magic.h>
@@ -17,17 +18,22 @@
 #include <snapshot.h>
 #include <subvol.h>
 
-static int swap_symlink(
-    const char *path,
-    const char *src_new,
-    const char *src_fallback);
+static int swap_symlink(const char *path, const char *src_new, const char* src_fallback) {
+  // Remove the original symlink
+  if (unlink(path)) {
+    perror("unlink");
+    return -1;
+  }
 
-/* Restore from subvolume
+  if (symlink(src_new, path)) {
+    perror("symlink");
+    if (symlink(src_fallback, path))
+      perror("symlink");
+    return -1;
+  }
 
- * Make an RW copy of the subvolume to restore in subvol.d/current
- * Set the default boot entry based on the kernel version in the new current
- * Reboot
- */
+  return 0;
+}
 
 int snapshot_restore(char *root_subvol_dir, const char *snapshot, const char *backup) {
   CLEANUP_DECLARE(ret);
@@ -207,19 +213,43 @@ CLEANUP:
   return ret;
 }
 
-static int swap_symlink(const char *path, const char *src_new, const char* src_fallback) {
-  // Remove the original symlink
-  if (unlink(path)) {
-    perror("unlink");
-    return -1;
+int get_kernel_versions(
+    const char *snapshot,
+    char **versions,
+    const size_t versions_len)
+{
+  CLEANUP_DECLARE(ret);
+
+  char *path = pathcat(snapshot, "usr/lib/modules");
+  DIR * const modules = opendir(path);
+
+  if (!modules) {
+    perror("opendir");
+    FAIL(ret);
   }
 
-  if (symlink(src_new, path)) {
-    perror("symlink");
-    if (symlink(src_fallback, path))
-      perror("symlink");
-    return -1;
-  }
+  struct dirent *ep;
+  char **p = versions;
+  char ** const versions_end = versions + versions_len - 1;
+  errno = 0;
+  while ((ep = readdir(modules)) && p != versions_end) {
+    if (errno) {
+      perror("readdir");
+      FAIL(ret);
+    }
+    
+    if (ep->d_type == DT_DIR && // Is a directory
+        ep->d_name[0] != '.')   // Is not hidden
+      *p ++ = strdup(ep->d_name);
 
-  return 0;
+    errno = 0;
+  }
+  ret = p - versions;
+  *p = NULL;
+
+CLEANUP:
+  if (closedir(modules))
+    perror("closedir");
+  free(path);
+  return ret;
 }

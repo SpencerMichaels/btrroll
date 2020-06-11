@@ -130,10 +130,15 @@ void dialog_free(dialog_t * const dialog) {
 // Choose an item from the given list
 int dialog_choose(
     dialog_t * const dialog,
-    const char **items, size_t items_len,
-    size_t *choice,
+    const char **items, const char **help,
+    size_t items_len, size_t *choice,
     const char *title, const char *format, ...)
 {
+  if (!dialog || !items || !title || !format) {
+    errno = EINVAL;
+    return -1;
+  }
+
   char pos_str[8];
   snprintf(pos_str, sizeof(pos_str), "%zu", (choice ? *choice : 0) + 1);
 
@@ -144,6 +149,8 @@ int dialog_choose(
       "--title", title,
       LABEL_ARGS,
       BUTTON_ARGS,
+      help ? "--item-help" : "--clear",
+      help ? "--help-tags" : "--clear",
       "--default-item", pos_str,
       "--menu", tmp_buf, "0", "0", "10"
   };
@@ -155,17 +162,21 @@ int dialog_choose(
   if (!items_len)
     return -EINVAL;
 
-  const size_t args_len = 2*items_len + lenof(args_prefix) + 1;
+  const int factor = help ? 3 : 2;
+  const size_t args_len = factor*items_len + lenof(args_prefix) + 1;
   const char **args = malloc(sizeof(char *) * args_len);
 
   memcpy(args, args_prefix, sizeof(args_prefix));
 
-  const size_t tag_len = 8; // TODO
-  for (size_t i = 0; i < items_len; i += 1) {
+  static const size_t tag_len = 8; // TODO
+  for (size_t i = 0; i < items_len; ++i) {
     char *tag = malloc(tag_len);
     snprintf(tag, tag_len, "%zu", i+1);
-    args[lenof(args_prefix) + i*2] = tag;
-    args[lenof(args_prefix) + i*2 + 1] = items[i];
+
+    args[lenof(args_prefix) + i*factor] = tag;
+    args[lenof(args_prefix) + i*factor + 1] = items[i];
+    if (help)
+      args[lenof(args_prefix) + i*factor + 2] = help[i];
   }
 
   args[args_len - 1] = NULL;
@@ -176,8 +187,8 @@ int dialog_choose(
   const int ret = run_pipe("dialog", args, NULL, 0, buf, BUF_LEN);
 
   // Only some elements of `args` are heap-allocated
-  for (size_t i = 0; i < items_len; i += 1)
-    free((char*)args[lenof(args_prefix) + i*2]);
+  for (size_t i = 0; i < items_len; ++i)
+    free((char*)args[lenof(args_prefix) + i*factor]);
   free(args);
 
   *choice = strtol(buf, NULL, 10) - 1;
@@ -190,6 +201,11 @@ int dialog_confirm(
     bool default_,
     const char *title, const char *format, ...)
 {
+  if (!dialog || !title || !format) {
+    errno = EINVAL;
+    return -1;
+  }
+
   // The use of --clear here is a hack to avoid dynamic arg allocation
   // It is basically a no-op that can stand in when --defaultno is not needed
   format_msg(tmp_buf, format);
@@ -212,6 +228,11 @@ int dialog_input(
     const char *init, char *out, const size_t out_len,
     const char *title, const char *format, ...)
 {
+  if (!dialog || !out || !title || !format) {
+    errno = EINVAL;
+    return -1;
+  }
+
   format_msg(tmp_buf, format);
   const char * args[] = {
       "dialog",
@@ -219,7 +240,7 @@ int dialog_input(
       "--title", title,
       LABEL_ARGS,
       BUTTON_ARGS,
-      "--inputbox", tmp_buf, "0", "0", init,
+      "--inputbox", tmp_buf, "0", "0", init ? init : "",
       NULL
   };
 
@@ -230,6 +251,11 @@ int dialog_ok(
     dialog_t * const dialog,
     const char *title, const char *format, ...)
 {
+  if (!dialog || !title || !format) {
+    errno = EINVAL;
+    return -1;
+  }
+
   format_msg(tmp_buf, format);
   const char * args[] = {
       "dialog",
@@ -250,6 +276,11 @@ int dialog_view_file(
     const char * title,
     const char * filepath)
 {
+  if (!dialog || !title || !filepath) {
+    errno = EINVAL;
+    return -1;
+  }
+
   const char * args[] = {
       "dialog",
       "--backtitle", BACKTITLE,
@@ -267,6 +298,11 @@ int dialog_view_file(
 
 // Clear the screen
 int dialog_clear(dialog_t * const dialog) {
+  if (!dialog) {
+    errno = EINVAL;
+    return -1;
+  }
+
   static const char * args[] = {
       "dialog",
       "--clear",

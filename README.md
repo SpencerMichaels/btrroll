@@ -118,6 +118,7 @@ the need to alter kernel command line parameters.
 [x] ensure no directory traversal when entering backup filenames
 [x] check for and reject toplevel root partition when provisioning
 [x] handle a missing or invalid snapshots directory
+[ ] use cmdline flags when mounting btrfs_root
 [ ] move PKGBUILD install to "make install"
 [ ] add config file
 [ ] boot into different kernel versions with systemd-boot
