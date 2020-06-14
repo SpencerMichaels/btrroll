@@ -103,10 +103,10 @@ TKTK: to be finalized
 * `timeout`: The time (in seconds) to wait for the user to press "enter" to
   bring up the `btrroll` console before continuing to boot. If zero, the
   console will always appear. Defaults to `1`.
-* `root_mountpoint`: The directory to which `btrroll` will mount the BTRFS root
+* `root`: The directory to which `btrroll` will mount the BTRFS root
   partition within the `initrd` when manipulating symlinks/snapshots.
   Defaults to `/btrfs_root`.
-* `esp_mountpoint`: The directory to which `btrroll` will mount the EFI System
+* `esp`: The directory to which `btrroll` will mount the EFI System
   Partition (ESP) within the `initrd` when manipulating boot entries.
   Defaults to `/efi`.
 
@@ -128,7 +128,7 @@ the need to alter kernel command line parameters.
 [x] ensure no directory traversal when entering backup filenames
 [x] check for and reject toplevel root partition when provisioning
 [x] handle a missing or invalid snapshots directory
-[~] boot into different kernel versions with systemd-boot
+[x] boot into different kernel versions with systemd-boot
 [ ] use cmdline flags when mounting btrfs_root
 [ ] move PKGBUILD install to "make install"
 [ ] add config file

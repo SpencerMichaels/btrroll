@@ -25,12 +25,5 @@ prepare() {
 
 package() {
     cd "$_pkgname"
-    cd btrroll
-    make
-    cd ..
-
-    install -Dm0755 btrroll/bin/btrroll "${pkgdir}/usr/bin/btrroll"
-    install -Dm0755 btrroll.hook "${pkgdir}/usr/lib/initcpio/hooks/btrroll"
-    install -Dm0755 btrroll.install "${pkgdir}/usr/lib/initcpio/install/btrroll"
-    install -Dm0644 btrroll.service "${pkgdir}/usr/lib/systemd/system/btrroll.service"
+    make DESTDIR="$pkgdir/" install
 }

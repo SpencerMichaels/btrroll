@@ -15,3 +15,9 @@ btrroll: $(obj)
 .PHONY: clean
 clean:
 	rm -f $(obj) btrroll
+
+install: btrroll
+	install -Dm0755 bin/btrroll "${DESTDIR}/usr/bin/btrroll"
+	install -Dm0755 etc/btrroll.hook "${DESTDIR}/usr/lib/initcpio/hooks/btrroll"
+	install -Dm0755 etc/btrroll.install "${DESTDIR}/usr/lib/initcpio/install/btrroll"
+	install -Dm0644 etc/btrroll.service "${DESTDIR}/usr/lib/systemd/system/btrroll.service"
