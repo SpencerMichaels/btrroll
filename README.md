@@ -9,6 +9,10 @@ known-good version of your root partition when an update renders it inoperable
 handy rescue console, for those times when you want to drop to a shell right in
 your `initrd`.
 
+**NOTE:** `btrroll` is still in active development. While it is currently a
+functional minimum viable product, I don't recommend you use it for anything
+uptime-sensitive; it's likely to have edge cases that I haven't worked out yet.
+
 ## Requirements & Recommendations
 
 `btrroll` requires that your root partition be located on a BTRFS subvolume
@@ -110,7 +114,9 @@ TKTK: to be finalized
   Partition (ESP) within the `initrd` when manipulating boot entries.
   Defaults to `/efi`.
 
-## How it Works
+## FAQ
+
+### How does btrroll work?
 
 `btrroll` sits in the [initial ramdisk (`initrd`)](
 https://en.wikipedia.org/wiki/Initial_ramdisk) and runs just before the system
@@ -118,17 +124,62 @@ root is mounted. It takes advantage of the fact that BTRFS subvolumes (and
 symlinks to subvolumes) can be mounted just like regular partitions.
 
 `btrroll` moves the original root subvolume — the `initrd`'s mount target —
-into a parallel directory, replacing it with a symlink to its new location. It
+into a parallel directory, replacing it with a symlink to its new location.[^1] It
 can then manipulate symlink (or its target) at boot time to select alternate
 boot targets on the fly before the `initrd` mounts the root partition, without
 the need to alter kernel command line parameters.
 
+[^1] More specifically, if your root subvolume is located at `/path/to/root`, a
+directory `/path/to/root.d` will be created, the original subvolume will be
+relocated to `/path/to/root.d/current`, and a symlink `/path/to/root` will be
+created pointing to `root.d/current`.
+
+### What configurations does btrroll support?
+
+**Bootloaders:** `systemd-boot` (gummiboot) only for now; GRUB support is
+planned but not yet implemented. If you are using another bootloader, you can
+still boot/restore snapshots, but you'll have to deal with kernel version
+differences yourself.
+
+**Initrd:** Systemd-based initrd and traditional initscripts are supported out
+of the box. For other init systems, it shouldn't be too hard to manually hook
+`btrroll` in: simply call the `btrroll` binary just before the root device is
+mounted.
+
+**Kernel Format:** EFISTUB only for now; some variations of separate kernel and
+initrd images may be supported in the future. `/boot` must be unencrypted.
+
+**Distribution:** A PKGBUILD is provided for ease of installation on Arch, but
+`btrroll` should work on any distro that provides the `dialog` and
+`btrfs-progs` packages (which nearly all do).
+
+### Can btrroll perform backups/snapshots?
+
+No! `btrroll` itself is not a backup tool; it just gives you the ability to
+boot from and restore existing snapshots. The only snapshotting functionality
+it provides is backing up the current root subvolume image before replacing it,
+which must necessarily be handled by `btrroll`.
+
+For a fully-functional BTRFS-focused backup application, I recommend
+[`btrbk`](https://github.com/digint/btrbk).
+
+### How do my snapshots need to be formatted for use by btrroll?
+
+`btrroll` does not care how you store your snapshots, so long as they are
+present in `/path/to/root.d/snapshots/` (or a subdirectory thereof).
+`snapshots/` is created as a directory during provisioning, but in case you
+want to store your snapshots elsewhere, you can replace it with a symlink or
+mountpoint and `btrroll` will behave identically.
+
+
 # TODO
 
-[x] ensure no directory traversal when entering backup filenames
-[x] check for and reject toplevel root partition when provisioning
-[x] handle a missing or invalid snapshots directory
-[x] boot into different kernel versions with systemd-boot
-[ ] use cmdline flags when mounting btrfs_root
-[ ] move PKGBUILD install to "make install"
-[ ] add config file
+* [x] ensure no directory traversal when entering backup filenames
+* [x] check for and reject toplevel root partition when provisioning
+* [x] handle a missing or invalid snapshots directory
+* [x] boot into different kernel versions with systemd-boot
+* [ ] support GRUB - call out to `grub-editenv list` and `grub-reboot`
+* [ ] use cmdline flags when mounting btrfs_root
+* [ ] move PKGBUILD install to "make install"
+* [ ] add config file: timeout, mount path
+* [ ] verification code path
